@@ -1,0 +1,64 @@
+# ===== Python / Backend =====
+venv/
+env/
+*.venv/
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+.pytest_cache/
+
+# ===== Node / Frontend =====
+node_modules/
+dist/
+build/
+.vite/
+
+# ===== AI Models & Weights (BIGGEST space hogs) =====
+*.pt
+*.pth
+*.bin
+*.safetensors
+*.onnx
+*.ckpt
+models/
+backend/tools/*.exe
+
+# Whisper cache
+.cache/
+~/.cache/whisper/
+
+# HuggingFace cache (Chatterbox, Parler, etc download yahan hote hain)
+.cache/huggingface/
+huggingface_cache/
+
+# ===== Audio/Media temp files =====
+*.mp3
+*.wav
+temp/
+tmp/
+tools/*.exe
+tools/ffmpeg.exe
+
+# ===== Environment & Secrets (IMPORTANT) =====
+.env
+.env.local
+*.key
+
+# ===== Database files =====
+*.db
+*.sqlite
+*.sqlite3
+
+# ===== Redis dump =====
+dump.rdb
+
+# ===== IDE / OS =====
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# ===== Logs =====
+*.log
+logs/

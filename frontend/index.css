@@ -1,0 +1,153 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:ital,wght@0,300;0,400;0,500;0,600;0,700;1,400&family=Outfit:wght@400;500;600;700;800;900&family=Space+Grotesk:wght@400;500;600;700&display=swap');
+
+@import "tailwindcss";
+
+
+@layer base {
+  :root {
+    --background: #0f1115;
+    --surface: rgba(255, 255, 255, 0.03);
+    --surface-hover: rgba(255, 255, 255, 0.08);
+    --primary: #4f46e5;
+    --primary-hover: #4338ca;
+    --accent: #9333ea;
+    --secondary: #2563eb;
+    --success: #10b981;
+    --warning: #f59e0b;
+    --danger: #e11d48;
+    --text-main: #f8fafc;
+    --text-muted: #94a3b8;
+    --border-glass: rgba(255, 255, 255, 0.1);
+    
+    --radius-sm: 8px;
+    --radius-md: 16px;
+    --radius-lg: 24px;
+    --radius-full: 9999px;
+  }
+  
+  /* Adding a light mode root for reference, though we aim for a dark rich default */
+  .light {
+    --background: #f8fafc;
+    --surface: rgba(0, 0, 0, 0.03);
+    --surface-hover: rgba(0, 0, 0, 0.08);
+    --primary: #4f46e5;
+    --accent: #9333ea;
+    --text-main: #0f172a;
+    --text-muted: #64748b;
+    --border-glass: rgba(0, 0, 0, 0.1);
+  }
+
+  body {
+    @apply bg-[var(--background)] text-[var(--text-main)] font-sans antialiased overflow-hidden;
+  }
+}
+
+@layer utilities {
+  .glass-panel {
+    @apply bg-[var(--surface)] backdrop-blur-xl border border-[var(--border-glass)] shadow-[0_8px_32px_rgba(0,0,0,0.3)];
+  }
+  
+  .glass-panel-light {
+    @apply bg-white/10 backdrop-blur-md border border-white/20;
+  }
+  
+  .text-glow {
+    text-shadow: 0 0 20px rgba(147, 51, 234, 0.5);
+  }
+  
+  .flex-center {
+    @apply flex items-center justify-center;
+  }
+}
+
+/* Custom Background Animations */
+.animated-bg {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  background:
+    radial-gradient(ellipse 80% 60% at 20% 30%, rgba(147, 51, 234, 0.15) 0%, transparent 60%),
+    radial-gradient(ellipse 60% 50% at 80% 70%, rgba(79, 70, 229, 0.15) 0%, transparent 55%),
+    linear-gradient(160deg, #0f1115 0%, #0a0b10 100%);
+  animation: pulse-bg 15s ease-in-out infinite alternate;
+}
+
+@keyframes pulse-bg {
+  0% { transform: scale(1); filter: hue-rotate(0deg); }
+  100% { transform: scale(1.05); filter: hue-rotate(15deg); }
+}
+
+.particles-bg {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  background-image: radial-gradient(circle 1px at 20% 30%, rgba(255,255,255,0.4), transparent),
+                    radial-gradient(circle 2px at 80% 60%, rgba(147,51,234,0.3), transparent);
+  background-size: 400px 400px;
+  animation: float-particles 60s linear infinite;
+  opacity: 0.6;
+}
+
+@keyframes float-particles {
+  from { background-position: 0 0; }
+  to { background-position: -400px 400px; }
+}
+
+/* Avatar Vignette */
+.avatar-vignette {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 10;
+  background: radial-gradient(ellipse 60% 70% at 50% 40%, transparent 40%, rgba(15, 17, 21, 0.8) 100%);
+  box-shadow: inset 0 0 100px rgba(0,0,0,0.5);
+}
+
+/* Hide scrollbar */
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+/* Custom Scrollbar for Chat */
+.chat-scroll::-webkit-scrollbar {
+  width: 6px;
+}
+.chat-scroll::-webkit-scrollbar-track {
+  background: transparent;
+}
+.chat-scroll::-webkit-scrollbar-thumb {
+  background: rgba(147, 51, 234, 0.2);
+  border-radius: 10px;
+}
+.chat-scroll::-webkit-scrollbar-thumb:hover {
+  background: rgba(147, 51, 234, 0.5);
+}
+
+/* Speaking Mic Pulse */
+.mic-pulse {
+  animation: mic-pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+@keyframes mic-pulse {
+  0% { box-shadow: 0 0 0 0 rgba(225, 29, 72, 0.4); }
+  70% { box-shadow: 0 0 0 20px rgba(225, 29, 72, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(225, 29, 72, 0); }
+}
+
+/* Thinking dots animation */
+.thinking-dot {
+  animation: tDot 1.4s infinite ease-in-out both;
+}
+.thinking-dot:nth-child(1) { animation-delay: -0.32s; }
+.thinking-dot:nth-child(2) { animation-delay: -0.16s; }
+.thinking-dot:nth-child(3) { animation-delay: 0s; }
+@keyframes tDot {
+  0%, 80%, 100% { transform: scale(0.6); opacity: 0.4; }
+  40% { transform: scale(1); opacity: 1; }
+}

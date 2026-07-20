@@ -1,0 +1,277 @@
+import os
+import io
+import asyncio
+import torch
+import soundfile as sf
+from pydub import AudioSegment
+
+# ── Point pydub at the bundled ffmpeg in tools/ ───────────────────────────────
+_TOOLS_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "tools"))
+_FFMPEG = os.path.join(_TOOLS_DIR, "ffmpeg.exe")
+if os.path.exists(_FFMPEG):
+    AudioSegment.converter = _FFMPEG
+    AudioSegment.ffmpeg    = _FFMPEG
+    os.environ["PATH"]     = _TOOLS_DIR + os.pathsep + os.environ.get("PATH", "")
+    print(f"[TTS] Using bundled ffmpeg: {_FFMPEG}")
+else:
+    print("[TTS] ffmpeg not found in tools/ — will send WAV (no MP3 encoding needed)")
+
+# ── Chatterbox-TTS Initialization ──────────────────────────────────────────────
+CHATTERBOX_AVAILABLE = False
+chatterbox_model = None
+CHATTERBOX_SR = 24000
+
+SUPPORTED_LANGUAGES = {'ar', 'da', 'de', 'el', 'en', 'es', 'fi', 'fr', 'he',
+                       'hi', 'it', 'ja', 'ko', 'ms', 'nl', 'no', 'pl', 'pt',
+                       'ru', 'sv', 'sw', 'tr', 'zh'}
+
+try:
+    # Disable Chatterbox loading to save VRAM and avoid autoregressive slowdowns
+    if False:
+        from chatterbox import ChatterboxMultilingualTTS
+
+        _device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        print(f"Loading Chatterbox Multilingual TTS on {_device}...")
+
+        # Patch torch.load to always use map_location so CUDA-saved weights load on CPU too
+        _orig_torch_load = torch.load
+        def _patched_load(f, **kwargs):
+            kwargs.setdefault("map_location", _device)
+            return _orig_torch_load(f, **kwargs)
+        torch.load = _patched_load
+
+        chatterbox_model = ChatterboxMultilingualTTS.from_pretrained(_device)
+        torch.load = _orig_torch_load  # restore
+
+        CHATTERBOX_SR = getattr(chatterbox_model, 'sr', 24000)
+        print(f"Chatterbox-TTS loaded on {_device}. SR={CHATTERBOX_SR}")
+        CHATTERBOX_AVAILABLE = True
+except Exception as e:
+    print(f"[WARNING] Chatterbox-TTS failed to load: {e}")
+    print("[INFO] Will use Edge-TTS as primary.")
+
+# ── Edge-TTS (fallback) ────────────────────────────────────────────────────────
+import edge_tts
+
+# Voice map: Whisper language code → Edge-TTS neural voice
+VOICE_MAP = {
+    "hi": "hi-IN-SwaraNeural",
+    "en": "en-IN-NeerjaNeural",
+    "ur": "ur-PK-UzmaNeural",
+    "ar": "ar-SA-ZariyahNeural",
+    "fr": "fr-FR-DeniseNeural",
+    "de": "de-DE-KatjaNeural",
+    "es": "es-ES-ElviraNeural",
+    "ja": "ja-JP-NanamiNeural",
+    "ko": "ko-KR-SunHiNeural",
+    "zh": "zh-CN-XiaoxiaoNeural",
+    "pt": "pt-BR-FranciscaNeural",
+    "ru": "ru-RU-SvetlanaNeural",
+    "it": "it-IT-ElsaNeural",
+    "tr": "tr-TR-EmelNeural",
+    "ta": "ta-IN-PallaviNeural",
+    "te": "te-IN-ShrutiNeural",
+    "bn": "bn-IN-TanishaaNeural",
+}
+DEFAULT_VOICE = "en-IN-NeerjaNeural"
+
+# Per-character voice config.
+# voice_hi  → Edge-TTS voice used when Devanagari script or lang==hi is detected
+# voice_en  → Edge-TTS voice used for English / Hinglish / default
+# pitch     → baseline Hz offset  (e.g. +30 = higher, -15 = deeper)
+# rate      → baseline % speed offset (e.g. +20 = faster, -10 = slower)
+#
+# Character mapping:
+#   avatar.vrm  → Kavya   — warm, neutral Indian female
+#   avatar1.vrm → Shriya  — slightly sharper/faster (sarcasm needs a quicker delivery)
+#   avatar2.vrm → Kumar   — measured male, slightly slower for thoughtful tone
+#   avatar3.vrm → Lucy    — high-pitch, fast — maximum energy
+#   avatar4.vrm → Sara    — low-pitch, slow — calming, soothing
+#   avatar5.vrm → Aanya   — child voice (AnaNeural), highest pitch
+#   avatar6.vrm → Ankur   — chill male, slightly upbeat
+AVATAR_VOICE_CONFIG = {
+    "avatar.vrm": {   # Kavya — warm, natural
+        "voice_hi": "hi-IN-SwaraNeural",
+        "voice_en": "en-IN-NeerjaNeural",
+        "pitch": 0, "rate": 0,
+    },
+    "avatar1.vrm": {  # Shriya — sharper, quicker; sarcasm lands better with pace
+        "voice_hi": "hi-IN-SwaraNeural",
+        "voice_en": "en-IN-NeerjaNeural",
+        "pitch": +15, "rate": +8,
+    },
+    "avatar2.vrm": {  # Kumar — deep male, deliberate pace
+        "voice_hi": "hi-IN-MadhurNeural",
+        "voice_en": "en-IN-PrabhatNeural",
+        "pitch": -5, "rate": -5,
+    },
+    "avatar3.vrm": {  # Lucy — highest energy: fast, bright, loud
+        "voice_hi": "hi-IN-SwaraNeural",
+        "voice_en": "en-US-AriaNeural",
+        "pitch": +30, "rate": +20,
+    },
+    "avatar4.vrm": {  # Sara — low-pitch, slower — soothing & calm
+        "voice_hi": "hi-IN-SwaraNeural",
+        "voice_en": "en-GB-SoniaNeural",
+        "pitch": -15, "rate": -10,
+    },
+    "avatar5.vrm": {  # Aanya — child voice (AnaNeural), very high pitch
+        "voice_hi": "hi-IN-SwaraNeural",
+        "voice_en": "en-US-AnaNeural",
+        "pitch": +50, "rate": +10,
+    },
+    "avatar6.vrm": {  # Ankur — chill male, slightly easy-going pace
+        "voice_hi": "hi-IN-MadhurNeural",
+        "voice_en": "en-IN-PrabhatNeural",
+        "pitch": +5, "rate": +5,
+    },
+}
+
+def _get_edge_voice(text: str, language: str, avatar: str = "avatar.vrm") -> tuple[str, int, int]:
+    config = AVATAR_VOICE_CONFIG.get(avatar, AVATAR_VOICE_CONFIG["avatar.vrm"])
+    
+    is_hindi = False
+    for ch in text:
+        cp = ord(ch)
+        if 0x0900 <= cp <= 0x097F:   # Devanagari
+            is_hindi = True
+            break
+            
+    voice = config["voice_hi"] if (is_hindi or language == "hi") else config["voice_en"]
+    return voice, config["pitch"], config["rate"]
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Fallback Visemes Generator
+# ─────────────────────────────────────────────────────────────────────────────
+def _generate_fallback_visemes(duration: float) -> dict:
+    pattern = ["X", "A", "C", "B", "D", "C", "E", "B", "C", "A", "D", "C", "B", "X"]
+    cue_ms = 0.075
+    cues = [{"start": 0.0, "end": 0.04, "value": "X"}]
+    t = 0.04
+    i = 0
+    while t < duration - 0.05:
+        v = pattern[i % len(pattern)]
+        end = round(min(t + cue_ms, duration - 0.04), 3)
+        cues.append({"start": round(t, 3), "end": end, "value": v})
+        t = end
+        i += 1
+    cues.append({"start": round(t, 3), "end": round(duration, 3), "value": "X"})
+    return {"metadata": {"soundFile": "", "duration": duration}, "mouthCues": cues}
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Edge-TTS generator (fallback)
+# ─────────────────────────────────────────────────────────────────────────────
+async def _generate_edge_audio(text: str, language: str, emotion: str = "neutral", avatar: str = "avatar.vrm") -> tuple[bytes, dict]:
+    voice, base_pitch, base_rate = _get_edge_voice(text, language, avatar)
+    
+    rate_val = base_rate
+    pitch_val = base_pitch
+    
+    # Apply dynamic Voice Tone Variation based on emotion tags
+    if emotion in ["happy", "jollyLaughter", "excited"]:
+        rate_val += 12
+        pitch_val += 15
+    elif emotion in ["sad", "comforting", "thoughtfulness"]:
+        rate_val -= 15
+        pitch_val -= 10
+    elif emotion == "thinking":
+        rate_val -= 10
+    elif emotion in ["surprised", "surprise"]:
+        rate_val += 15
+        pitch_val += 20
+    elif emotion in ["anger", "displeasure"]:
+        rate_val += 20
+        pitch_val -= 15 # Lower pitch but much faster/louder feel
+    elif emotion in ["annoyed", "disagreement"]:
+        rate_val -= 5
+        pitch_val -= 10 # Flat and unamused
+    elif emotion in ["confidentSpeech", "leadership", "presentation"]:
+        rate_val += 5
+        pitch_val += 5 # Crisp and clear
+    elif emotion in ["coySmile", "blushing", "receptive"]:
+        rate_val -= 10
+        pitch_val += 10 # Soft, slightly higher and slower
+        
+        
+    rate = f"{rate_val:+}%"
+    pitch = f"{pitch_val:+}Hz"
+        
+    print(f"[EDGE-TTS] voice={voice}, lang={language}, emotion={emotion}, avatar={avatar}, rate={rate}, pitch={pitch}")
+    communicate = edge_tts.Communicate(text=text, voice=voice, rate=rate, pitch=pitch)
+    byte_io = io.BytesIO()
+    async for chunk in communicate.stream():
+        if chunk["type"] == "audio":
+            byte_io.write(chunk["data"])
+    audio_bytes = byte_io.getvalue()
+    if not audio_bytes:
+        raise RuntimeError(f"Edge-TTS returned 0 bytes for voice={voice}")
+
+    def get_dur():
+        seg = AudioSegment.from_file(io.BytesIO(audio_bytes), format="mp3")
+        return len(seg) / 1000.0
+
+    dur = await asyncio.to_thread(get_dur)
+    return audio_bytes, _generate_fallback_visemes(dur)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Main async TTS function
+# ─────────────────────────────────────────────────────────────────────────────
+async def generate_audio_async(text: str, language: str = "en", emotion: str = "neutral", avatar: str = "avatar.vrm") -> tuple[bytes, dict]:
+    """
+    Primary: Edge-TTS (Fast & reliable for real-time)
+    Fallback: Chatterbox (Disabled for real-time)
+    """
+    # Use Edge-TTS directly as primary to avoid 100+ second response times on RTX 3050
+    return await _generate_edge_audio(text, language, emotion, avatar)
+
+    # ── Try Chatterbox first (DISABLED) ───────────────────────────────────────
+    if False and CHATTERBOX_AVAILABLE and chatterbox_model is not None:
+        # Emotion → exaggeration
+        if emotion in ("happy", "surprised"):
+            exaggeration = 0.75
+        elif emotion in ("sad", "thinking"):
+            exaggeration = 0.35
+        else:
+            exaggeration = 0.5
+
+        lang_id = language if language in SUPPORTED_LANGUAGES else "en"
+
+        base_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "models"))
+        ref_voice = os.path.join(base_dir, "reference_voice.WAV")
+        if not os.path.exists(ref_voice):
+            ref_voice = os.path.join(base_dir, "reference_voice.wav")
+
+        print(f"[CHATTERBOX] Generating: '{text[:60]}' [lang={lang_id}, exag={exaggeration}]")
+
+        try:
+            def run_chatterbox():
+                wav_tensor = chatterbox_model.generate(
+                    text=text,
+                    language_id=lang_id,
+                    audio_prompt_path=ref_voice if os.path.exists(ref_voice) else None,
+                    exaggeration=exaggeration,
+                )
+                audio_np = wav_tensor.squeeze().cpu().numpy()
+                # Output as WAV bytes (works without ffmpeg)
+                wav_io = io.BytesIO()
+                sf.write(wav_io, audio_np, CHATTERBOX_SR, format="WAV")
+                wav_bytes = wav_io.getvalue()
+                duration = len(audio_np) / CHATTERBOX_SR
+                print(f"[CHATTERBOX] Generated {len(wav_bytes)} WAV bytes, {duration:.2f}s")
+                return wav_bytes, duration
+
+            import time
+            t0 = time.time()
+            audio_bytes, audio_duration = await asyncio.to_thread(run_chatterbox)
+            print(f"[CHATTERBOX] Total time: {time.time()-t0:.2f}s")
+            return audio_bytes, _generate_fallback_visemes(audio_duration)
+
+        except Exception as e:
+            print(f"[CHATTERBOX] Error: {e}. Falling back to Edge-TTS...")
+            import traceback; traceback.print_exc()
+
+    # ── Edge-TTS fallback ────────────────────────────────────────────────────
+    return await _generate_edge_audio(text, language, emotion, avatar)
