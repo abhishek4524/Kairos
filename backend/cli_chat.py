@@ -5,17 +5,24 @@ import asyncio
 
 # Suppress pygame welcome message
 os.environ['PYGAME_HIDE_SUPPORT_PROMPT'] = "hide"
-import pygame
+try:
+    import pygame
+except ImportError:
+    pygame = None
 
 # Import our agents
 from llm_agent import generate_streaming_response
 from tts_agent import generate_audio_async
 
 # Initialize pygame mixer for audio playback
-pygame.mixer.init()
+if pygame:
+    pygame.mixer.init()
 
 async def play_audio_bytes(audio_bytes: bytes):
     """Plays audio bytes from memory using Pygame."""
+    if not pygame:
+        print("\n[Warning]: pygame is not installed, skipping audio playback.")
+        return
     try:
         # Load the MP3 bytes into a BytesIO object
         audio_file = io.BytesIO(audio_bytes)

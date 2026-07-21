@@ -6,5 +6,4 @@ numpy
 groq
 redis
 edge-tts
-pygame
 pydub
