@@ -21,15 +21,25 @@ _redis_port     = int(os.getenv('REDIS_PORT', 6379))
 _redis_password = os.getenv('REDIS_PASSWORD', None)
 _redis_ssl      = bool(_redis_password)   # Redis Cloud requires SSL; localhost does not
 
-redis_client = redis.Redis(
-    host=_redis_host,
-    port=_redis_port,
-    password=_redis_password,
-    ssl=_redis_ssl,
-    db=0,
-    decode_responses=True,
-)
-print(f"[Redis] Connecting to {_redis_host}:{_redis_port} (ssl={_redis_ssl})")
+try:
+    redis_client = redis.Redis(
+        host=_redis_host,
+        port=_redis_port,
+        password=_redis_password,
+        ssl=_redis_ssl,
+        ssl_cert_reqs=None,        # skip cert verification (Redis Cloud self-signed certs)
+        ssl_check_hostname=False,  # avoid hostname mismatch errors
+        db=0,
+        decode_responses=True,
+        socket_connect_timeout=5,
+    )
+    redis_client.ping()
+    print(f"[Redis] ✅ Connected to {_redis_host}:{_redis_port} (ssl={_redis_ssl})")
+except Exception as _redis_err:
+    print(f"[Redis] ⚠️  Connection failed ({_redis_err}) — running WITHOUT Redis cache (chat will still work via MongoDB)")
+    redis_client = None
+
+
 
 # ── Primary: Groq ─────────────────────────────────────────────────────────────
 try:
@@ -468,18 +478,29 @@ def strip_emotion_tag(text: str) -> str:
 
 
 def get_chat_history(session_id: str, avatar_id: str, limit: int = 20) -> list:
-    history_json = redis_client.get(f"chat_history:{session_id}:{avatar_id}")
-    if history_json:
-        history = json.loads(history_json)
-    else:
-        history = db.get_recent_messages(session_id, avatar_id, limit)
-        if history:
+    if redis_client:
+        try:
+            history_json = redis_client.get(f"chat_history:{session_id}:{avatar_id}")
+            if history_json:
+                return json.loads(history_json)
+        except Exception as _e:
+            print(f"[Redis] get error (falling back to DB): {_e}")
+    # Fallback: load from MongoDB / SQLite
+    history = db.get_recent_messages(session_id, avatar_id, limit)
+    if history and redis_client:
+        try:
             redis_client.set(f"chat_history:{session_id}:{avatar_id}", json.dumps(history))
+        except Exception:
+            pass
     return history
 
 
 def save_chat_history(session_id: str, avatar_id: str, history: list):
-    redis_client.set(f"chat_history:{session_id}:{avatar_id}", json.dumps(history))
+    if redis_client:
+        try:
+            redis_client.set(f"chat_history:{session_id}:{avatar_id}", json.dumps(history))
+        except Exception as _e:
+            print(f"[Redis] set error: {_e}")
 
 
 def summarize_history_if_needed(session_id: str, avatar_id: str, history: list) -> list:

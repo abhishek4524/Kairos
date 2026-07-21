@@ -253,10 +253,15 @@ async def audio_stream(websocket: WebSocket, session_id: str = "default_session"
             if any(cmd in clean_input for cmd in reset_commands):
                 print(f"[INFO] User requested memory reset for user={effective_user_id}")
                 db.clear_history(effective_user_id)
-                from llm_agent import redis_client
-                for key in redis_client.scan_iter(f"chat_history:{effective_user_id}*"):
-                    redis_client.delete(key)
+                from llm_agent import redis_client as _rc
+                if _rc:
+                    try:
+                        for key in _rc.scan_iter(f"chat_history:{effective_user_id}*"):
+                            _rc.delete(key)
+                    except Exception as _re:
+                        print(f"[Redis] clear error: {_re}")
                 
+
                 reset_msg = "Maine apni saari purani memory delete kar di hai, ek fresh start ke liye!"
                 await websocket.send_json({
                     "type": "transcription",
