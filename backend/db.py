@@ -74,15 +74,24 @@ def clear_history(user_id, avatar_id=None):
     conn.commit()
     conn.close()
 
-def get_all_sessions():
+def get_all_sessions(user_id=None):
     conn = get_connection()
     c = conn.cursor()
-    c.execute('''
-        SELECT user_id, MIN(timestamp) as created_at
-        FROM chat_history
-        GROUP BY user_id
-        ORDER BY created_at DESC
-    ''')
+    if user_id:
+        c.execute('''
+            SELECT user_id, MIN(timestamp) as created_at
+            FROM chat_history
+            WHERE user_id = ?
+            GROUP BY user_id
+            ORDER BY created_at DESC
+        ''', (user_id,))
+    else:
+        c.execute('''
+            SELECT user_id, MIN(timestamp) as created_at
+            FROM chat_history
+            GROUP BY user_id
+            ORDER BY created_at DESC
+        ''')
     sessions = []
     rows = c.fetchall()
     
@@ -96,7 +105,6 @@ def get_all_sessions():
         ''', (uid,))
         res = c.fetchone()
         preview = res[0] if res else "New Chat"
-        # Truncate preview
         if len(preview) > 40:
             preview = preview[:37] + "..."
             
@@ -123,3 +131,79 @@ def get_session_history(user_id):
     for role, content in rows:
         messages.append({"role": role, "text": content})
     return messages
+
+# ── Admin Analytics ──────────────────────────────────────────────────────────
+
+def get_dashboard_stats():
+    conn = get_connection()
+    c = conn.cursor()
+    c.execute('SELECT COUNT(DISTINCT user_id) FROM chat_history')
+    total_users = c.fetchone()[0] or 0
+    
+    c.execute('SELECT COUNT(*) FROM chat_history')
+    total_messages = c.fetchone()[0] or 0
+    
+    c.execute('SELECT COUNT(*) FROM chat_history WHERE role = "assistant"')
+    total_assistant = c.fetchone()[0] or 0
+    
+    conn.close()
+    return {
+        "total_users": total_users,
+        "total_messages": total_messages,
+        "total_assistant_messages": total_assistant
+    }
+
+def get_activity_over_time(days=30):
+    conn = get_connection()
+    c = conn.cursor()
+    # Group by date (YYYY-MM-DD)
+    c.execute(f'''
+        SELECT date(timestamp, 'unixepoch') as day, COUNT(*) as count
+        FROM chat_history
+        WHERE timestamp > (strftime('%s', 'now') - (? * 86400))
+        GROUP BY day
+        ORDER BY day ASC
+    ''', (days,))
+    rows = c.fetchall()
+    conn.close()
+    
+    return [{"date": row[0], "messages": row[1]} for row in rows]
+
+def get_avatar_usage():
+    conn = get_connection()
+    c = conn.cursor()
+    c.execute('''
+        SELECT avatar_id, COUNT(*) as count
+        FROM chat_history
+        WHERE role = 'assistant'
+        GROUP BY avatar_id
+        ORDER BY count DESC
+    ''')
+    rows = c.fetchall()
+    conn.close()
+    
+    return [{"avatar_id": row[0], "count": row[1]} for row in rows]
+
+def get_detailed_logs(limit=100):
+    conn = get_connection()
+    c = conn.cursor()
+    c.execute('''
+        SELECT id, user_id, avatar_id, role, content, timestamp
+        FROM chat_history
+        ORDER BY timestamp DESC
+        LIMIT ?
+    ''', (limit,))
+    rows = c.fetchall()
+    conn.close()
+    
+    logs = []
+    for row in rows:
+        logs.append({
+            "id": row[0],
+            "user_id": row[1],
+            "avatar_id": row[2],
+            "role": row[3],
+            "content": row[4],
+            "timestamp": row[5]
+        })
+    return logs

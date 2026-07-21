@@ -20,7 +20,7 @@ function Bubble({ role, text, emotion, activeAvatar }) {
         className={`max-w-[85%] px-5 py-3 text-sm md:text-base leading-relaxed ${
           isUser 
             ? 'bg-gradient-to-br from-primary to-accent text-white rounded-[24px_24px_4px_24px] shadow-[0_4px_20px_rgba(147,51,234,0.3)]'
-            : 'bg-white/5 backdrop-blur-md text-gray-200 rounded-[24px_24px_24px_4px] border border-white/10 shadow-lg'
+            : 'assistant-bubble bg-[var(--surface)] backdrop-blur-md text-[var(--text-main)] rounded-[24px_24px_24px_4px] border border-[var(--border-glass)] shadow-lg'
         }`}
         style={{
           boxShadow: !isUser && activeAvatar ? `0 4px 20px ${activeAvatar.accent}15` : undefined,
@@ -59,10 +59,10 @@ export default function ChatPanel({
     <div className="w-full md:w-[380px] lg:w-[420px] flex flex-col h-full bg-surface/40 backdrop-blur-2xl border-l border-border-glass z-20 shrink-0">
       
       {/* Header */}
-      <div className="flex items-center justify-between px-6 py-4 border-b border-border-glass bg-white/5">
+      <div className="flex items-center justify-between px-6 py-4 border-b border-[var(--border-glass)] bg-[var(--surface)]">
         
         {/* Status Pill */}
-        <div className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-white/5 border border-white/10">
+        <div className="status-pill flex items-center gap-2 px-3 py-1.5 rounded-full bg-[var(--surface)] border border-[var(--border-glass)]">
           <div className={`w-2 h-2 rounded-full ${
             status === 'Listening' ? 'bg-danger animate-pulse' :
             status === 'Thinking' ? 'bg-accent animate-pulse' :
@@ -74,7 +74,7 @@ export default function ChatPanel({
               status === 'Speaking' ? '#10b981' : 'transparent'
             }`
           }} />
-          <span className="text-[11px] font-bold uppercase tracking-wider text-gray-300">
+          <span className="text-[11px] font-bold uppercase tracking-wider text-[var(--text-muted)]">
             {status === 'Thinking' ? (activeAvatar ? `${activeAvatar.name} is thinking...` : 'Thinking...') : status}
           </span>
         </div>
@@ -84,7 +84,7 @@ export default function ChatPanel({
           <select 
             value={preferredLanguage}
             onChange={e => onLanguageChange(e.target.value)}
-            className="bg-white/5 border border-white/10 text-gray-300 text-xs font-bold rounded-lg px-2 py-1.5 outline-none cursor-pointer hover:bg-white/10 transition-colors"
+            className="bg-[var(--surface)] border border-[var(--border-glass)] text-[var(--text-main)] text-xs font-bold rounded-lg px-2 py-1.5 outline-none cursor-pointer hover:bg-[var(--surface-hover)] transition-colors"
           >
             <option value="en">EN</option>
             <option value="hi">HI</option>
@@ -92,7 +92,7 @@ export default function ChatPanel({
             <option value="pa">PA</option>
           </select>
 
-          <button onClick={onThemeToggle} className="p-1.5 rounded-lg bg-white/5 hover:bg-white/10 text-gray-300 transition-colors border border-transparent hover:border-white/10">
+          <button onClick={onThemeToggle} className="p-1.5 rounded-lg bg-[var(--surface)] hover:bg-[var(--surface-hover)] text-[var(--text-main)] transition-colors border border-transparent hover:border-[var(--border-glass)]">
             {theme === 'dark' ? <Sun size={16} /> : <Moon size={16} />}
           </button>
         </div>
@@ -122,7 +122,7 @@ export default function ChatPanel({
               initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
               className="flex items-start mb-4"
             >
-              <div className="bg-white/5 backdrop-blur-md rounded-[24px_24px_24px_4px] px-5 py-4 border border-white/10">
+              <div className="assistant-bubble bg-[var(--surface)] backdrop-blur-md rounded-[24px_24px_24px_4px] px-5 py-4 border border-[var(--border-glass)]">
                 <div className="flex gap-1.5">
                   <div className="w-1.5 h-1.5 rounded-full bg-gray-400 thinking-dot" />
                   <div className="w-1.5 h-1.5 rounded-full bg-gray-400 thinking-dot" />

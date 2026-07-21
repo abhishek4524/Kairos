@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useMemo, useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import CharacterDock from './CharacterDock';
 import ChatPanel from '../chat/ChatPanel';
@@ -6,15 +6,34 @@ import HeroAvatar from '../avatar/HeroAvatar';
 import VoiceDock from './VoiceDock';
 import { useAudioStreaming } from '../../hooks/useAudioStreaming';
 
-function HistoryList({ onSelectSession, currentSessionId }) {
+// ── Anonymous Browser-Based User Identity ───────────────────────────────────
+// No login/signup required. A unique ID is generated once per browser and
+// stored in localStorage. Same browser = same identity, fresh browser = new.
+const getUserId = () => {
+  try {
+    let uid = localStorage.getItem('nanban_user_id');
+    if (!uid) {
+      uid = 'nanban_user_' + crypto.randomUUID().replace(/-/g, '').slice(0, 16);
+      localStorage.setItem('nanban_user_id', uid);
+    }
+    return uid;
+  } catch {
+    // localStorage disabled (e.g. private browsing) — use in-memory fallback
+    if (!getUserId._fallback) getUserId._fallback = 'nanban_user_' + Math.random().toString(36).slice(2, 18);
+    return getUserId._fallback;
+  }
+};
+
+function HistoryList({ userId, onSelectSession, currentUserId }) {
   const [sessions, setSessions] = useState([]);
   
   useEffect(() => {
-    fetch('http://localhost:8000/api/sessions')
+    // fetch sessions from backend to find previous avatars
+    fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:8000'}/api/sessions?user_id=${encodeURIComponent(userId)}`)
       .then(res => res.json())
       .then(data => setSessions(data || []))
       .catch(() => {});
-  }, []);
+  }, [userId]);
 
   return (
     <>
@@ -22,37 +41,62 @@ function HistoryList({ onSelectSession, currentSessionId }) {
         <button 
           key={s.session_id} 
           onClick={() => onSelectSession(s.session_id)}
-          className={`text-left p-3 rounded-xl hover:bg-white/10 transition-colors text-sm ${s.session_id === currentSessionId ? 'bg-primary/20 border border-primary/50' : 'bg-white/5 border border-transparent'}`}
+          className={`text-left p-3 rounded-xl hover:bg-[var(--surface-hover)] transition-colors text-sm ${
+            s.session_id === currentUserId 
+              ? 'bg-primary/20 border border-primary/50' 
+              : 'bg-[var(--surface)] border border-transparent'
+          }`}
         >
-          <div className="text-gray-200 font-medium truncate">{s.preview || "New Chat"}</div>
-          <div className="text-xs text-gray-500 mt-1">{new Date(s.created_at * 1000).toLocaleString()}</div>
+          <div className="text-[var(--text-main)] font-medium truncate">{s.preview || 'New Chat'}</div>
+          <div className="text-xs text-[var(--text-muted)] mt-1">{new Date(s.created_at * 1000).toLocaleString()}</div>
         </button>
       ))}
-      {sessions.length === 0 && <div className="text-gray-500 text-sm text-center mt-4">No history found.</div>}
+      {sessions.length === 0 && (
+        <div className="text-[var(--text-muted)] text-sm text-center mt-8 opacity-60">
+          No conversations yet.
+        </div>
+      )}
     </>
   );
 }
 
 const AVATARS = [
-  { id: 'av0', file: 'avatar.vrm', name: 'Kavya', accent: '#f59e0b', emoji: '✨' },
-  { id: 'av1', file: 'avatar1.vrm', name: 'Shriya', accent: '#9333ea', emoji: '😏' },
-  { id: 'av2', file: 'avatar2.vrm', name: 'Kumar', accent: '#10b981', emoji: '💡' },
-  { id: 'av3', file: 'avatar3.vrm', name: 'Lucy', accent: '#f43f5e', emoji: '💖' },
-  { id: 'av4', file: 'avatar4.vrm', name: 'Sara', accent: '#3b82f6', emoji: '🌸' },
-  { id: 'av5', file: 'avatar5.vrm', name: 'Aanya', accent: '#eab308', emoji: '🎈' },
-  { id: 'av6', file: 'avatar6.vrm', name: 'Ankur', accent: '#14b8a6', emoji: '😎' },
+  { id: 'av0', file: 'avatar.vrm', name: 'Kavya', bgName: 'kavya', accent: '#f59e0b' },
+  { id: 'av1', file: 'avatar1.vrm', name: 'Shriya', bgName: 'shriya', accent: '#9333ea' },
+  { id: 'av2', file: 'avatar2.vrm', name: 'Kumar', bgName: 'kumar', accent: '#10b981' },
+  { id: 'av3', file: 'avatar3.vrm', name: 'Lucy', bgName: 'lucy', accent: '#f43f5e' },
+  { id: 'av4', file: 'avatar4.vrm', name: 'Sara', bgName: 'sara', accent: '#3b82f6' },
+  { id: 'av5', file: 'avatar5.vrm', name: 'Aanya', bgName: 'aanya', accent: '#eab308' },
+  { id: 'av6', file: 'avatar6.vrm', name: 'Ankur', bgName: 'ankur', accent: '#14b8a6' },
 ];
 
-// Character backgrounds: light + dark per avatar
-const AVATAR_BACKGROUNDS = {
-  'avatar.vrm':  { light: '/bg_kavya_light.png',  dark: '/bg_kavya_dark.png'  },
-  'avatar1.vrm': { light: '/bg_shriya_light.png', dark: '/bg_shriya_dark.png' },
-  'avatar2.vrm': { light: '/bg_kumar_light.png',  dark: '/bg_kumar_dark.png'  },
-  // The remaining backgrounds (Lucy, Sara, Aanya, Ankur) will use the default animated background
-  // until their images can be generated.
+const FRIENDLY_WORDS = ['hi', 'hello', 'hey', 'thanks', 'thank', 'please', 'love', 'nice', 'great', 'awesome', 'yaar', 'dost', 'bro', 'sis'];
+const EXCITED_WORDS = ['wow', 'amazing', 'haha', 'lol', 'yay', 'super', 'perfect', 'cool'];
+
+const deriveUserRapportEnergy = (messages) => {
+  const recent = messages.filter(msg => msg.role === 'user').slice(-4);
+  if (!recent.length) return 0.35;
+
+  const total = recent.reduce((score, msg) => {
+    const text = String(msg.text || '').toLowerCase();
+    const words = text.split(/\s+/).filter(Boolean);
+    const exclamations = (text.match(/!/g) || []).length;
+    const friendliness = FRIENDLY_WORDS.some(word => text.includes(word)) ? 0.22 : 0;
+    const excitement = EXCITED_WORDS.some(word => text.includes(word)) ? 0.2 : 0;
+    const shortWarmPing = words.length > 0 && words.length <= 8 ? 0.12 : 0;
+    const punctuationLift = Math.min(exclamations * 0.08, 0.2);
+    return score + 0.28 + friendliness + excitement + shortWarmPing + punctuationLift;
+  }, 0);
+
+  return Math.min(1, total / recent.length);
 };
 
+// Three.js handles the room backgrounds directly in AvatarCanvas.jsx.
+
 export default function AppLayout() {
+  // ── User Identity (anonymous, browser-local) ─────────────────────────────
+  const [userId] = useState(() => getUserId());
+
   // State
   const [sessionId, setSessionId] = useState(() => localStorage.getItem('nanban-session-id') || crypto.randomUUID());
   const [selectedAvatar, setSelectedAvatar] = useState(() => localStorage.getItem('nanban-selected-character') || 'avatar.vrm');
@@ -78,9 +122,19 @@ export default function AppLayout() {
     triggerIntro
   } = useAudioStreaming({
     sessionId,
+    userId,
     selectedAvatar,
     preferredLanguage,
-    onMessageReceived: (msg) => setMessages(prev => [...prev, msg]),
+    onMessageReceived: (msg) => setMessages(prev => {
+      // For assistant messages: update the last assistant entry in-place
+      // instead of appending a new one (prevents duplicate display).
+      if (msg.role === 'assistant' && prev.length > 0 && prev[prev.length - 1].role === 'assistant') {
+        const updated = [...prev];
+        updated[updated.length - 1] = msg;
+        return updated;
+      }
+      return [...prev, msg];
+    }),
     onStatusChange: setStatus,
     onEmotionChange: setEmotion,
     onGestureChange: setGestureOverride,
@@ -95,13 +149,14 @@ export default function AppLayout() {
   useEffect(() => { localStorage.setItem('nanban-theme', theme); }, [theme]);
   useEffect(() => { localStorage.setItem('nanban-zoom-level', zoomLevel.toString()); }, [zoomLevel]);
 
-  // Load History (Initial)
+  // Load History (Initial) — keyed by userId so history persists across sessions
   useEffect(() => {
-    fetch(`http://localhost:8000/api/history/${sessionId}`)
+    // Fetch history using anonymous user ID
+    fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:8000'}/api/history/${userId}`)
       .then(res => res.json())
       .then(data => setMessages(data || []))
       .catch(() => {});
-  }, [sessionId]);
+  }, [userId]);
 
   const handleAvatarSelect = (file) => {
     if (file === selectedAvatar) return;
@@ -131,41 +186,12 @@ export default function AppLayout() {
   const toggleMic = () => isRecording ? stopRecording() : startRecording();
 
   const activeAvatarObj = AVATARS.find(a => a.file === selectedAvatar);
-  const currentBg = AVATAR_BACKGROUNDS[selectedAvatar]?.[theme] || null;
+  const userRapportEnergy = useMemo(() => deriveUserRapportEnergy(messages), [messages]);
 
   return (
     <div className={`app-container flex flex-col md:flex-row w-screen h-screen overflow-hidden ${theme}`}>
       
-      {/* Character Background Image — fades on change */}
-      <AnimatePresence mode="wait">
-        {currentBg ? (
-          <motion.div
-            key={currentBg}
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            transition={{ duration: 0.8, ease: 'easeInOut' }}
-            className="absolute inset-0 z-0"
-            style={{
-              backgroundImage: `url(${currentBg})`,
-              backgroundSize: 'cover',
-              backgroundPosition: 'center',
-            }}
-          />
-        ) : (
-          <motion.div key="animated-bg" className="absolute inset-0 z-0">
-            <div className="animated-bg" />
-            {theme === 'dark' && <div className="particles-bg" />}
-          </motion.div>
-        )}
-      </AnimatePresence>
-      {/* Overlay to darken/blend background so UI stays readable */}
-      <div className={`absolute inset-0 z-[1] pointer-events-none ${
-        theme === 'dark'
-          ? 'bg-black/55'
-          : 'bg-white/25'
-      }`} />
-      
+      {/* The background is fully handled by Three.js in AvatarCanvas.jsx */}
       {/* 1. Left Dock: Character Selector */}
       <CharacterDock 
         avatars={AVATARS} 
@@ -173,6 +199,7 @@ export default function AppLayout() {
         onSelectAvatar={handleAvatarSelect}
         onNewChat={handleNewChat}
         onToggleHistory={() => setIsHistoryOpen(!isHistoryOpen)}
+        theme={theme}
       />
 
       {/* History Panel Overlay */}
@@ -182,19 +209,29 @@ export default function AppLayout() {
             initial={{ opacity: 0, x: -20 }}
             animate={{ opacity: 1, x: 0 }}
             exit={{ opacity: 0, x: -20 }}
-            className="absolute z-50 p-4 overflow-y-auto bg-[#0a0a0a]/95 backdrop-blur-xl border-r border-white/10
+            className="absolute z-50 p-4 overflow-y-auto bg-[var(--background)] backdrop-blur-xl border-r border-[var(--border-glass)]
               md:left-[120px] lg:left-[140px] md:top-0 md:bottom-0 md:w-[300px] md:inset-auto
               inset-0 w-full h-full"
           >
             <div className="flex justify-between items-center mb-6">
-              <h3 className="text-white font-bold tracking-wide">Chat History</h3>
-              <button onClick={() => setIsHistoryOpen(false)} className="w-8 h-8 rounded-full bg-white/5 hover:bg-white/10 flex items-center justify-center text-gray-400 hover:text-white transition-colors">✕</button>
+              <h3 className="text-[var(--text-main)] font-bold tracking-wide">Chat History</h3>
+              <button onClick={() => setIsHistoryOpen(false)} className="w-8 h-8 rounded-full bg-[var(--surface)] hover:bg-[var(--surface-hover)] flex items-center justify-center text-[var(--text-muted)] hover:text-[var(--text-main)] transition-colors">✕</button>
             </div>
             <div className="flex flex-col gap-2">
-              <HistoryList onSelectSession={(id) => {
-                 setSessionId(id);
-                 setIsHistoryOpen(false);
-              }} currentSessionId={sessionId} />
+              <HistoryList
+                userId={userId}
+                currentUserId={userId}
+                onSelectSession={(id) => {
+                  // refetch history for this newly activated session
+                  fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:8000'}/api/history/${encodeURIComponent(id)}`)
+                    .then(res => res.json())
+                    .then(data => {
+                      setMessages(data || []);
+                      setIsHistoryOpen(false);
+                    })
+                    .catch(() => setIsHistoryOpen(false));
+                }}
+              />
             </div>
           </motion.div>
         )}
@@ -209,6 +246,7 @@ export default function AppLayout() {
         zoomLevel={zoomLevel}
         onZoomChange={setZoomLevel}
         theme={theme}
+        userRapportEnergy={userRapportEnergy}
       />
 
       {/* 3. Right: Conversation Panel (Desktop standard, Mobile bottom sheet) */}
@@ -236,7 +274,8 @@ export default function AppLayout() {
           theme={theme}
           onThemeToggle={toggleTheme}
           onHistoryClick={() => {
-            fetch(`http://localhost:8000/api/history/${sessionId}`)
+            // Fetch history for new character using generic user ID
+            fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:8000'}/api/history/${userId}`)
               .then(res => res.json())
               .then(data => setMessages(data || []));
           }}
@@ -270,6 +309,11 @@ export default function AppLayout() {
           </motion.div>
         )}
       </AnimatePresence>
+
+      {/* Subtle data-locality notice */}
+      <div className="absolute bottom-1 left-1/2 -translate-x-1/2 z-10 text-[9px] text-[var(--text-muted)] opacity-30 pointer-events-none select-none whitespace-nowrap">
+        Data stored locally in this browser
+      </div>
 
     </div>
   );

@@ -5,19 +5,20 @@
 
 @layer base {
   :root {
-    --background: #0f1115;
-    --surface: rgba(255, 255, 255, 0.03);
-    --surface-hover: rgba(255, 255, 255, 0.08);
-    --primary: #4f46e5;
-    --primary-hover: #4338ca;
-    --accent: #9333ea;
-    --secondary: #2563eb;
+    /* Anime Dark Theme (Default) - Deep blues/purples with neon accents */
+    --background: #090b14;
+    --surface: rgba(16, 20, 38, 0.4);
+    --surface-hover: rgba(25, 30, 50, 0.6);
+    --primary: #6366f1; /* Indigo */
+    --primary-hover: #4f46e5;
+    --accent: #d946ef; /* Fuchsia/Neon Pink */
+    --secondary: #0ea5e9; /* Sky Blue */
     --success: #10b981;
     --warning: #f59e0b;
     --danger: #e11d48;
     --text-main: #f8fafc;
     --text-muted: #94a3b8;
-    --border-glass: rgba(255, 255, 255, 0.1);
+    --border-glass: rgba(255, 255, 255, 0.08);
     
     --radius-sm: 8px;
     --radius-md: 16px;
@@ -25,34 +26,61 @@
     --radius-full: 9999px;
   }
   
-  /* Adding a light mode root for reference, though we aim for a dark rich default */
   .light {
-    --background: #f8fafc;
-    --surface: rgba(0, 0, 0, 0.03);
-    --surface-hover: rgba(0, 0, 0, 0.08);
-    --primary: #4f46e5;
-    --accent: #9333ea;
-    --text-main: #0f172a;
-    --text-muted: #64748b;
-    --border-glass: rgba(0, 0, 0, 0.1);
+    /* ── Anime Light Theme — Warm Lavender Pastel ─────────────────────────── */
+    /* Soft lavender-white base: avoids sterile pure-white feel            */
+    --background: #f3f0fb;           /* Warm lavender-tinted white         */
+    --surface: rgba(255, 255, 255, 0.72);  /* Translucent white card       */
+    --surface-hover: rgba(255, 255, 255, 0.90);
+    --primary: #6d28d9;              /* Deep violet — same hue, rich       */
+    --primary-hover: #5b21b6;
+    --accent: #db2777;               /* Rose-pink, visible on white        */
+    --secondary: #2563eb;            /* Rich blue                          */
+    --success: #059669;
+    --warning: #d97706;
+    --danger: #dc2626;
+    --text-main: #1e1b4b;            /* Deep indigo-black for legibility   */
+    --text-muted: #6b7280;
+    --border-glass: rgba(109, 40, 217, 0.12);  /* Violet-tinted border     */
+    --shadow-card: 0 4px 24px rgba(109, 40, 217, 0.10), 0 1px 4px rgba(0,0,0,0.06);
+    --shadow-float: 0 8px 32px rgba(109, 40, 217, 0.14), 0 2px 8px rgba(0,0,0,0.08);
+    --glow-accent: rgba(109, 40, 217, 0.18);
   }
 
   body {
     @apply bg-[var(--background)] text-[var(--text-main)] font-sans antialiased overflow-hidden;
+    font-family: 'Inter', sans-serif;
+  }
+  
+  h1, h2, h3, h4, h5, h6, .brand-font {
+    font-family: 'Outfit', sans-serif;
   }
 }
 
 @layer utilities {
+  /* ── Dark mode glass ──────────────────────────────────────────────── */
   .glass-panel {
-    @apply bg-[var(--surface)] backdrop-blur-xl border border-[var(--border-glass)] shadow-[0_8px_32px_rgba(0,0,0,0.3)];
+    @apply bg-[var(--surface)] backdrop-blur-2xl border border-[var(--border-glass)] shadow-[0_8px_32px_rgba(0,0,0,0.25)];
+    box-shadow: inset 0 1px 1px rgba(255, 255, 255, 0.05);
+  }
+
+  /* ── Light mode glass override ──────────────────────────────────────── */
+  .light .glass-panel {
+    background: rgba(255, 255, 255, 0.70);
+    backdrop-filter: blur(24px) saturate(1.6);
+    -webkit-backdrop-filter: blur(24px) saturate(1.6);
+    border: 1px solid rgba(109, 40, 217, 0.14);
+    box-shadow: 0 8px 32px rgba(109, 40, 217, 0.10),
+                0 2px 8px rgba(0, 0, 0, 0.06),
+                inset 0 1px 1px rgba(255, 255, 255, 0.90);
   }
   
   .glass-panel-light {
-    @apply bg-white/10 backdrop-blur-md border border-white/20;
+    @apply bg-white/40 backdrop-blur-2xl border border-white/50 shadow-[0_8px_32px_rgba(0,0,0,0.05)];
   }
   
   .text-glow {
-    text-shadow: 0 0 20px rgba(147, 51, 234, 0.5);
+    text-shadow: 0 0 12px var(--accent), 0 0 24px var(--accent);
   }
   
   .flex-center {
@@ -95,7 +123,7 @@
   to { background-position: -400px 400px; }
 }
 
-/* Avatar Vignette */
+/* Avatar Vignette — Dark mode */
 .avatar-vignette {
   position: absolute;
   inset: 0;
@@ -103,6 +131,11 @@
   z-index: 10;
   background: radial-gradient(ellipse 60% 70% at 50% 40%, transparent 40%, rgba(15, 17, 21, 0.8) 100%);
   box-shadow: inset 0 0 100px rgba(0,0,0,0.5);
+}
+/* Light mode: softer vignette, no harsh black edge */
+.light .avatar-vignette {
+  background: radial-gradient(ellipse 65% 75% at 50% 40%, transparent 40%, rgba(109, 40, 217, 0.18) 100%);
+  box-shadow: inset 0 0 80px rgba(109, 40, 217, 0.10);
 }
 
 /* Hide scrollbar */
@@ -114,7 +147,7 @@
   scrollbar-width: none;
 }
 
-/* Custom Scrollbar for Chat */
+/* Custom Scrollbar for Chat — Dark */
 .chat-scroll::-webkit-scrollbar {
   width: 6px;
 }
@@ -127,6 +160,13 @@
 }
 .chat-scroll::-webkit-scrollbar-thumb:hover {
   background: rgba(147, 51, 234, 0.5);
+}
+/* Light mode chat scrollbar */
+.light .chat-scroll::-webkit-scrollbar-thumb {
+  background: rgba(109, 40, 217, 0.18);
+}
+.light .chat-scroll::-webkit-scrollbar-thumb:hover {
+  background: rgba(109, 40, 217, 0.40);
 }
 
 /* Speaking Mic Pulse */
@@ -150,4 +190,61 @@
 @keyframes tDot {
   0%, 80%, 100% { transform: scale(0.6); opacity: 0.4; }
   40% { transform: scale(1); opacity: 1; }
+}
+
+/* ── Light mode: Zoom Slider Premium Styling ─────────────────────────── */
+/* Replaces the plain gray bar with a violet gradient track + accent thumb */
+.light input[type='range'].zoom-slider {
+  appearance: none;
+  -webkit-appearance: none;
+  height: 6px;
+  border-radius: 9999px;
+  background: linear-gradient(90deg, #c4b5fd 0%, #a78bfa 50%, #7c3aed 100%);
+  outline: none;
+  cursor: pointer;
+  box-shadow: 0 0 6px rgba(109, 40, 217, 0.20);
+}
+.light input[type='range'].zoom-slider::-webkit-slider-thumb {
+  appearance: none;
+  -webkit-appearance: none;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: #6d28d9;
+  box-shadow: 0 0 0 3px rgba(255,255,255,0.90), 0 0 10px rgba(109,40,217,0.40);
+  border: none;
+  cursor: pointer;
+  transition: box-shadow 0.2s;
+}
+.light input[type='range'].zoom-slider::-webkit-slider-thumb:hover {
+  box-shadow: 0 0 0 4px rgba(255,255,255,0.95), 0 0 16px rgba(109,40,217,0.55);
+}
+.light input[type='range'].zoom-slider::-moz-range-thumb {
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: #6d28d9;
+  box-shadow: 0 0 0 3px rgba(255,255,255,0.90), 0 0 10px rgba(109,40,217,0.40);
+  border: none;
+  cursor: pointer;
+}
+
+/* ── Light mode: Character Dock extra polish ──────────────────────────── */
+.light .char-avatar-ring {
+  box-shadow: 0 4px 16px rgba(109, 40, 217, 0.18), 0 1px 4px rgba(0,0,0,0.08);
+}
+
+/* ── Light mode: Chat bubble depth ─────────────────────────────────── */
+.light .assistant-bubble {
+  background: rgba(255, 255, 255, 0.82);
+  backdrop-filter: blur(12px);
+  border: 1px solid rgba(109, 40, 217, 0.12);
+  box-shadow: 0 4px 16px rgba(109, 40, 217, 0.08), 0 1px 4px rgba(0,0,0,0.05);
+}
+
+/* ── Light mode: Status pill ────────────────────────────────────────── */
+.light .status-pill {
+  background: rgba(255, 255, 255, 0.80);
+  border: 1px solid rgba(109, 40, 217, 0.16);
+  box-shadow: 0 2px 8px rgba(109, 40, 217, 0.08);
 }

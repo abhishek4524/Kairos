@@ -99,6 +99,8 @@ const GESTURES = {
   head_scratch:    { leftUpperArm: { x:0.10, y:0.00, z:-1.15 }, rightUpperArm: { x:-0.20, y:-0.15, z:-0.80 }, leftLowerArm: { x:0.18, y:0.00, z:-0.12 }, rightLowerArm: { x:-1.30, y: 0.10, z:-0.10 }, leftHand: { x:0.00, y: 0.10, z: 0.00 }, rightHand: { x:0.00, y:-0.20, z: 0.10 } },
   shrug:           { leftUpperArm: { x:0.10, y: 0.10, z:-0.70 }, rightUpperArm: { x:0.10, y:-0.10, z: 0.70 }, leftLowerArm: { x:-0.30, y: 0.10, z: 0.10 }, rightLowerArm: { x:-0.30, y:-0.10, z:-0.10 }, leftHand: { x:0.00, y: 0.00, z: 0.00 }, rightHand: { x:0.00, y: 0.00, z: 0.00 } },
   facepalm:        { leftUpperArm: { x:0.10, y:0.00, z:-1.15 }, rightUpperArm: { x: 0.20, y:-0.15, z:-0.50 }, leftLowerArm: { x:0.18, y:0.00, z:-0.12 }, rightLowerArm: { x:-1.40, y: 0.20, z: 0.10 }, leftHand: { x:0.00, y: 0.10, z: 0.00 }, rightHand: { x:0.10, y: 0.00, z: 0.10 } },
+  palm_up:         { leftUpperArm: { x:0.20, y: 0.15, z:-0.60 }, rightUpperArm: { x:0.20, y:-0.15, z: 0.60 }, leftLowerArm: { x:-0.30, y:-0.30, z: 0.10 }, rightLowerArm: { x:-0.30, y: 0.30, z:-0.10 }, leftHand: { x:-0.10, y: 0.10, z:-0.60 }, rightHand: { x:-0.10, y:-0.10, z: 0.60 } },
+  palm_down:       { leftUpperArm: { x:0.20, y: 0.15, z:-0.60 }, rightUpperArm: { x:0.20, y:-0.15, z: 0.60 }, leftLowerArm: { x:-0.30, y:-0.30, z: 0.10 }, rightLowerArm: { x:-0.30, y: 0.30, z:-0.10 }, leftHand: { x:-0.10, y: 0.10, z: 0.60 }, rightHand: { x:-0.10, y:-0.10, z:-0.60 } },
   
   // ── Emotional ───────────────────────────────────────────────────────────────
   excited_jump:    { leftUpperArm: { x:-0.20, y: 0.20, z:-0.40 }, rightUpperArm: { x:-0.20, y:-0.20, z: 0.40 }, leftLowerArm: { x:-0.60, y: 0.10, z: 0.10 }, rightLowerArm: { x:-0.60, y:-0.10, z:-0.10 }, leftHand: { x:-0.10, y: 0.10, z: 0.00 }, rightHand: { x:-0.10, y:-0.10, z: 0.00 } },
@@ -129,7 +131,7 @@ const GESTURES = {
   kumar_glasses:   { leftUpperArm: { x:0.10, y:0.00, z:-1.15 }, rightUpperArm: { x: 0.25, y:-0.10, z:-0.60 }, leftLowerArm: { x:0.18, y:0.00, z:-0.12 }, rightLowerArm: { x:-1.40, y: 0.15, z: 0.00 }, leftHand: { x:0.00, y: 0.10, z: 0.00 }, rightHand: { x:0.10, y:-0.10, z:-0.15 } },
   sara_gentle:     { leftUpperArm: { x:0.10, y:0.00, z:-1.15 }, rightUpperArm: { x: 0.15, y:-0.15, z: 0.50 }, leftLowerArm: { x:0.18, y:0.00, z:-0.12 }, rightLowerArm: { x:-0.80, y: 0.10, z:-0.05 }, leftHand: { x:0.00, y: 0.10, z: 0.00 }, rightHand: { x:-0.05, y: 0.00, z: 0.00 } },
   lucy_spin:       { leftUpperArm: { x:0.20, y: 0.20, z:-0.70 }, rightUpperArm: { x:0.20, y:-0.20, z: 0.70 }, leftLowerArm: { x:-0.20, y:-0.10, z: 0.10 }, rightLowerArm: { x:-0.20, y: 0.10, z:-0.10 }, leftHand: { x:0.00, y: 0.00, z: 0.00 }, rightHand: { x:0.00, y: 0.00, z: 0.00 } },
-  kavya_open:      { leftUpperArm: { x:0.20, y: 0.40, z:-0.50 }, rightUpperArm: { x:0.20, y:-0.40, z: 0.50 }, leftLowerArm: { x:0.10, y: 0.20, z: 0.00 }, rightLowerArm: { x:0.10, y:-0.20, z: 0.00 }, leftHand: { x:-0.10, y: 0.00, z: 0.00 }, rightHand: { x:-0.10, y: 0.00, z: 0.00 } },
+  kavya_open:      { leftUpperArm: { x:0.14, y: 0.08, z:-0.98 }, rightUpperArm: { x:0.14, y:-0.08, z: 0.98 }, leftLowerArm: { x:0.08, y: 0.10, z: 0.02 }, rightLowerArm: { x:0.08, y:-0.10, z:-0.02 }, leftHand: { x:-0.06, y: 0.08, z:-0.12 }, rightHand: { x:-0.06, y:-0.08, z: 0.12 } },
   shriya_smirk:    { leftUpperArm: { x:0.15, y: 0.00, z:-0.80 }, rightUpperArm: { x:0.05, y: 0.00, z: 1.15 }, leftLowerArm: { x:-0.70, y:-0.10, z: 0.00 }, rightLowerArm: { x:0.18, y:0.00, z: 0.12 }, leftHand: { x:0.10, y: 0.00, z: 0.00 }, rightHand: { x:0.00, y: 0.00, z: 0.00 } },
   goodbye:         { leftUpperArm: { x:0.10, y:0.00, z:-1.15 }, rightUpperArm: { x:-0.40, y:-0.15, z:-0.30 }, leftLowerArm: { x:0.18, y:0.00, z:-0.12 }, rightLowerArm: { x:-0.90, y:0.00, z: 0.00 }, leftHand: { x:0.00, y: 0.10, z: 0.00 }, rightHand: { x:0.00, y:-0.20, z: 0.00 } },
 };
@@ -164,18 +166,78 @@ const CHARACTER_PROFILES = {
   '/avatar6.vrm':{ breathRate: 0.7, swayRate: 0.6, swayAmp: 0.7, blinkMin: 3.0, blinkMax: 7.0, gazeMin: 3.0, gazeMax: 6.0 }, // Ankur
 };
 
+const AVATAR_NAMES = {
+  '/avatar.vrm': 'kavya',
+  '/avatar1.vrm': 'shriya',
+  '/avatar2.vrm': 'kumar',
+  '/avatar3.vrm': 'lucy',
+  '/avatar4.vrm': 'sara',
+  '/avatar5.vrm': 'aanya',
+  '/avatar6.vrm': 'ankur',
+};
+
+const BACKGROUND_FALLBACKS = {
+  kavya: ['jpg', 'png'],
+  shriya: ['jpg', 'png'],
+  kumar: ['jpg', 'png'],
+  lucy: ['jpg', 'png'],
+  sara: ['jpg', 'png'],
+  aanya: ['jpg', 'png'],
+  ankur: ['jpg', 'png'],
+};
+
+const BACKGROUND_LIGHTING = {
+  kavya:  { keyDark: 0xffd0a0, keyLight: 0xffe8c0, fillDark: 0x8a7060, fillLight: 0xd8c5b2 },
+  shriya: { keyDark: 0xd7c4ff, keyLight: 0xf0dcff, fillDark: 0x66527f, fillLight: 0xcab4e8 },
+  kumar:  { keyDark: 0xc8e7d9, keyLight: 0xe1fff1, fillDark: 0x536f63, fillLight: 0xb9dacb },
+  lucy:   { keyDark: 0xffb8c8, keyLight: 0xffdbe3, fillDark: 0x8a5363, fillLight: 0xe7adbb },
+  sara:   { keyDark: 0xbfd9ff, keyLight: 0xe7f1ff, fillDark: 0x506987, fillLight: 0xb8d3ef },
+  aanya:  { keyDark: 0xffdda2, keyLight: 0xffedc7, fillDark: 0x8a7450, fillLight: 0xe4cc9c },
+  ankur:  { keyDark: 0xffc69a, keyLight: 0xffe4c2, fillDark: 0x8a6450, fillLight: 0xddb49b },
+};
+
+const getBackgroundCandidates = (avatarUrl, theme) => {
+  const avatarName = AVATAR_NAMES[avatarUrl] || 'kavya';
+  const mode = theme === 'dark' ? 'dark' : 'light';
+  const exts = BACKGROUND_FALLBACKS[avatarName] || ['jpg', 'png'];
+  return [
+    ...exts.map(ext => `/backgrounds/${avatarName}_${mode}.${ext}`),
+    `/bg_${avatarName}_${mode}.png`,
+    `/bg_${avatarName}_${mode}.jpg`,
+  ];
+};
+
 const GESTURE_BONES = [
   'leftUpperArm', 'rightUpperArm',
   'leftLowerArm', 'rightLowerArm',
   'leftHand',     'rightHand',
 ];
 
-const selectGesture = (isSpeaking, emotionKey, override, avatarUrl) => {
+const selectGesture = (isSpeaking, emotionKey, override, avatarUrl, time, rapportEnergy = 0) => {
   if (override) return override;
-  // If speaking, use the LLM-chosen emotion.
-  // If idle, fall back to the character's baseline personality emotion.
+  
   const baseEmotion = isSpeaking ? emotionKey : (DEFAULT_EMOTIONS[avatarUrl] || 'neutral');
   
+  // Allan Pease Book Enhancements: Map core states to micro-gestures dynamically
+  if (isSpeaking) {
+    const isHonestOpen = ['openness', 'comforting', 'casualChat', 'friendlyContact'].includes(baseEmotion);
+    const isAuthoritative = ['leadership', 'confidentSpeech', 'explaining'].includes(baseEmotion);
+    const isEvaluating = ['thinking', 'thoughtfulness', 'attentive'].includes(baseEmotion);
+
+    // Seed pseudo-randomness with time to dynamically inject micro-gestures
+    const p = Math.sin(time * 0.5); 
+    
+    if (isEvaluating && p > 0.78) return 'chin_rub';
+    if (isEvaluating && p < -0.78) return 'thinking';
+    
+    if (isHonestOpen && p > 0.52) return 'palm_up';
+    if (isAuthoritative && p > 0.62) return 'palm_down';
+  } else if (rapportEnergy > 0.68) {
+    const p = Math.sin(time * 0.38 + rapportEnergy * Math.PI);
+    if (p > 0.84) return 'synchrony';
+    if (p < -0.88) return 'openPosture';
+  }
+
   // Intercept with character-specific signature if it exists
   const charSigs = CHARACTER_SIGNATURES[avatarUrl];
   if (charSigs && charSigs[baseEmotion]) {
@@ -217,12 +279,15 @@ const loadVRM = (url, scene, S, onLoaded) => {
   }, undefined, (err) => console.error('[VRM] Load error:', err));
 };
 
-export default function AvatarCanvas({ audioPlayEvent, emotion = 'neutral', gestureOverride = null, avatarUrl = '/avatar.vrm', theme = 'light', zoomLevel = 50 }) {
+export default function AvatarCanvas({ audioPlayEvent, emotion = 'neutral', gestureOverride = null, avatarUrl = '/avatar.vrm', theme = 'light', zoomLevel = 50, userRapportEnergy = 0.35 }) {
   const canvasRef = useRef(null);
   const vrmRef    = useRef(null);
   const sceneRef  = useRef(null);
   const cameraRef = useRef(null);
   const rendererRef = useRef(null);
+  const prevBgTextureRef = useRef(null);
+  const currentBgTextureRef = useRef(null);
+  const currentBgUrlRef = useRef(null);
   
   // Single mutable state object — updated every frame, never triggers re-renders
   const S = useRef({
@@ -267,6 +332,26 @@ export default function AvatarCanvas({ audioPlayEvent, emotion = 'neutral', gest
     avatarHeight: 1.6,
     avatarHeadY: 1.45,
     avatarCenterY: 0.8,
+
+    bgGroup: null,
+    bgPlaneGeo: null,
+    bgTextureLoader: null,
+    bgActiveMesh: null,
+    bgActiveMat: null,
+    bgOldMesh: null,
+    oldBgMat: null,
+    newBgMat: null,
+    bgFadeProgress: 1,
+    createBackgroundMaterial: null,
+
+    keyLight: null,
+    fillLight: null,
+    rimLight: null,
+    ambientLight: null,
+
+    rapportTarget: 0.35,
+    rapportCurrent: 0.35,
+    organicNoiseSeed: rand(0, Math.PI * 2),
   }).current;
 
   // ─────────────────────────────────── Scene Setup & Master Loop ────────────
@@ -278,12 +363,12 @@ export default function AvatarCanvas({ audioPlayEvent, emotion = 'neutral', gest
 
     const scene = new THREE.Scene();
     sceneRef.current = scene;
-    scene.background = new THREE.Color(theme === 'dark' ? 0x0b0d1a : 0xf0f4f8);
+    scene.background = new THREE.Color(0x000000); // Base dark void
 
     const getW = () => canvasRef.current?.parentElement?.offsetWidth  ?? window.innerWidth;
     const getH = () => canvasRef.current?.parentElement?.offsetHeight ?? window.innerHeight;
 
-    const camera = new THREE.PerspectiveCamera(28, getW() / getH(), 0.1, 20);
+    const camera = new THREE.PerspectiveCamera(28, getW() / getH(), 0.1, 25);
     cameraRef.current = camera;
     camera.position.set(0, 1.45, 1.75);
     camera.lookAt(0, 1.35, 0);
@@ -291,7 +376,7 @@ export default function AvatarCanvas({ audioPlayEvent, emotion = 'neutral', gest
     // Reuse existing renderer if canvas is the same, else create new
     let renderer = rendererRef.current;
     if (!renderer || renderer.domElement !== canvasRef.current) {
-      renderer = new THREE.WebGLRenderer({ canvas: canvasRef.current, antialias: true });
+      renderer = new THREE.WebGLRenderer({ canvas: canvasRef.current, antialias: true, alpha: false });
       rendererRef.current = renderer;
     }
     renderer.setSize(getW(), getH());
@@ -300,17 +385,71 @@ export default function AvatarCanvas({ audioPlayEvent, emotion = 'neutral', gest
     renderer.toneMapping = THREE.ACESFilmicToneMapping;
     renderer.toneMappingExposure = 1.1;
 
-    // Lighting: warm key + cool fill + rim
-    const keyLight = new THREE.DirectionalLight(0xfff0e0, Math.PI * 0.9);
+    // Background Planes & Custom Blur Shader
+    const bgGroup = new THREE.Group();
+    bgGroup.position.set(0, 1.45, -10); // Far behind avatar
+    scene.add(bgGroup);
+    S.bgGroup = bgGroup;
+    S.bgPlaneGeo = new THREE.PlaneGeometry(24, 13.5); // Wide enough to cover frustum shifts
+    S.bgTextureLoader = new THREE.TextureLoader();
+    S.createBackgroundMaterial = (texture, opacity) => new THREE.ShaderMaterial({
+      uniforms: {
+        tDiffuse: { value: texture },
+        opacity: { value: opacity },
+        blurSize: { value: 1.65 },
+        resolution: { value: new THREE.Vector2(texture.image?.width || 1024, texture.image?.height || 1024) }
+      },
+      vertexShader: `
+        varying vec2 vUv;
+        void main() {
+          vUv = uv;
+          gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+        }
+      `,
+      fragmentShader: `
+        uniform sampler2D tDiffuse;
+        uniform float opacity;
+        uniform vec2 resolution;
+        uniform float blurSize;
+        varying vec2 vUv;
+        void main() {
+          vec2 texel = vec2(1.0 / resolution.x, 1.0 / resolution.y);
+          vec4 color = vec4(0.0);
+          float total = 0.0;
+          for(float x = -2.0; x <= 2.0; x++) {
+            for(float y = -2.0; y <= 2.0; y++) {
+              color += texture2D(tDiffuse, vUv + vec2(x, y) * texel * blurSize);
+              total += 1.0;
+            }
+          }
+          gl_FragColor = color / total;
+          gl_FragColor.a *= opacity;
+        }
+      `,
+      transparent: true,
+      depthWrite: false,
+      depthTest: true
+    });
+
+    // Lighting: Dynamic sync with character/background vibe
+    const keyLight = new THREE.DirectionalLight(0xffffff, Math.PI * 0.9);
     keyLight.position.set(1.5, 2.5, 2);
     scene.add(keyLight);
-    const fillLight = new THREE.DirectionalLight(0xc0d8ff, 0.6);
+    S.keyLight = keyLight;
+    
+    const fillLight = new THREE.DirectionalLight(0xffffff, 0.6);
     fillLight.position.set(-2, 1, -1);
     scene.add(fillLight);
+    S.fillLight = fillLight;
+    
     const rimLight = new THREE.DirectionalLight(0xffffff, 0.3);
     rimLight.position.set(0, 3, -3);
     scene.add(rimLight);
-    scene.add(new THREE.AmbientLight(0xffffff, 0.35));
+    S.rimLight = rimLight;
+    
+    const ambientLight = new THREE.AmbientLight(0xffffff, 0.35);
+    scene.add(ambientLight);
+    S.ambientLight = ambientLight;
 
     // VRM loading
     const loader = new GLTFLoader();
@@ -404,24 +543,35 @@ export default function AvatarCanvas({ audioPlayEvent, emotion = 'neutral', gest
       
       const profile = CHARACTER_PROFILES[avatarUrl] || CHARACTER_PROFILES['/avatar.vrm'];
 
+      // ── Natural Timing Jitter (Allan Pease 'organic movement' rule) ──────
+      const jitter = Math.sin(S.time * 2.5 + S.organicNoiseSeed) * 0.05 + Math.sin(S.time * 4.1 + S.organicNoiseSeed * 0.7) * 0.03;
+      S.rapportCurrent = lerp(S.rapportCurrent, S.rapportTarget, dt * 1.2);
+      const mirrorLift = 1 + S.rapportCurrent * 0.28;
+
       // ── Layer 1: BREATHING ───────────────────────────────────────────────
       const breathRate = (S.currentEmotionKey === 'surprised' ? 0.45 : 0.32) * profile.breathRate;
-      S.breathPhase += dt * breathRate;
+      S.breathPhase += (dt + dt * jitter) * breathRate * (0.96 + S.rapportCurrent * 0.12);
       const breathVal = (Math.sin(S.breathPhase) + 1) * 0.5;   // 0..1
 
       const chestNode = getNode('upperChest') ?? getNode('chest');
       if (chestNode) chestNode.rotation.x = breathVal * 0.018;
 
-      // Shoulders rise/fall with breath + emotion
+      // Shoulders rise/fall with breath + emotion (Territorial/Open posture)
       const lShoulder = getNode('leftShoulder');
       const rShoulder = getNode('rightShoulder');
-      const shoulderRaise = S.currentEmotionKey === 'happy' ? -0.05 : (S.currentEmotionKey === 'sad' ? 0.05 : 0);
-      if (lShoulder) lShoulder.rotation.z =  breathVal * 0.04 + shoulderRaise;
-      if (rShoulder) rShoulder.rotation.z = -breathVal * 0.04 - shoulderRaise;
+      const isConfident = ['leadership', 'confidentSpeech', 'openness', 'openPosture'].includes(S.currentEmotionKey) || S.rapportCurrent > 0.72;
+      const isDefensive = ['sad', 'tired', 'displeasure', 'opposition'].includes(S.currentEmotionKey);
+      
+      const shoulderRaise = S.currentEmotionKey === 'happy' ? -0.05 : (isDefensive ? 0.05 : 0);
+      const shoulderOpen = isConfident ? 0.1 : (isDefensive ? -0.1 : 0); // Allan Pease chest open/close
 
-      // ── Layer 2: HIP WEIGHT SHIFT ────────────────────────────────────────
-      S.hipSwayPhase += dt * (S.isSpeaking ? (0.75 + volBoost * 0.5) : 0.50) * profile.swayRate;
-      const hipTarget = Math.sin(S.hipSwayPhase) * (S.isSpeaking ? 0.012 : 0.020) * profile.swayAmp;
+      if (lShoulder) { lShoulder.rotation.z = breathVal * 0.04 + shoulderRaise; lShoulder.rotation.y = shoulderOpen; }
+      if (rShoulder) { rShoulder.rotation.z = -breathVal * 0.04 - shoulderRaise; rShoulder.rotation.y = -shoulderOpen; }
+
+      // ── Layer 2: HIP WEIGHT SHIFT (Mirroring user energy) ────────────────
+      // volBoost represents conversational energy level. High energy -> slightly faster sway.
+      S.hipSwayPhase += (dt + dt * jitter) * (S.isSpeaking ? (0.75 + volBoost * 0.6) : 0.50 * mirrorLift) * profile.swayRate;
+      const hipTarget = Math.sin(S.hipSwayPhase) * (S.isSpeaking ? 0.012 : 0.020 * (0.9 + S.rapportCurrent * 0.25)) * profile.swayAmp;
       S.hipRotZ = lerp(S.hipRotZ, hipTarget, dt * 1.5);
 
       const hipsNode = getNode('hips');
@@ -432,9 +582,9 @@ export default function AvatarCanvas({ audioPlayEvent, emotion = 'neutral', gest
 
       // ── Layer 3: SPINE LEAN (Emotion-driven Posture) ─────────────────────
       const POSTURE_OFFSETS = {
-        surprised: -0.06, happy: -0.04, confidentSpeech: -0.05, leadership: -0.04, openness: -0.04, jollyLaughter: -0.05, // Open, leaning back slightly
-        sad: 0.06, comforting: 0.03, attentive: 0.02, tired: 0.05, // Closed, leaning forward/settled
-        anger: -0.02, // rigid, slightly back
+        surprised: -0.06, happy: -0.04, confidentSpeech: -0.07, leadership: -0.06, openness: -0.05, jollyLaughter: -0.05, // Open/Confident
+        sad: 0.06, comforting: 0.03, attentive: 0.02, tired: 0.05, // Closed/Evaluating
+        anger: -0.02, // rigid
         relaxed: 0.01,
       };
       
@@ -447,9 +597,9 @@ export default function AvatarCanvas({ audioPlayEvent, emotion = 'neutral', gest
       }
 
       // ── Layer 4: HEAD IDLE SWAY & TILT ───────────────────────────────────
-      S.swayPhaseX += dt * (S.isSpeaking ? 0.20 : 0.10) * profile.swayRate;
-      S.swayPhaseY += dt * (S.isSpeaking ? 0.15 : 0.08) * profile.swayRate;
-      const swayAmp = (S.isSpeaking ? (0.006 + volBoost * 0.005) : 0.014) * profile.swayAmp;
+      S.swayPhaseX += (dt + dt * jitter * 0.5) * (S.isSpeaking ? 0.20 : 0.10 * mirrorLift) * profile.swayRate;
+      S.swayPhaseY += (dt + dt * jitter * 0.5) * (S.isSpeaking ? 0.15 : 0.08 * mirrorLift) * profile.swayRate;
+      const swayAmp = (S.isSpeaking ? (0.006 + volBoost * 0.005) : 0.014 * (0.88 + S.rapportCurrent * 0.28)) * profile.swayAmp;
       S.headRotX = lerp(S.headRotX, Math.sin(S.swayPhaseX) * swayAmp, dt * 1.8);
       S.headRotY = lerp(S.headRotY, Math.sin(S.swayPhaseY) * swayAmp * 0.6, dt * 1.8);
       
@@ -493,17 +643,20 @@ export default function AvatarCanvas({ audioPlayEvent, emotion = 'neutral', gest
       S.blinkWeight = lerp(S.blinkWeight, S.isBlinking ? Math.sin(S.blinkProgress * Math.PI) : 0, dt * 20);
       safe(em, VRMExpressionPresetName.Blink, S.blinkWeight);
 
-      // ── Layer 7: GAZE (Dynamic wandering) ────────────────────────────────
+      // ── Layer 7: GAZE (Dynamic wandering & Genuine Interest) ─────────────
       S.gazeTimer -= dt;
       if (S.gazeTimer <= 0) {
         if (S.isLookingAway) {
            // Look back at user
            S.gazeTargetX = rand(-0.02, 0.02);
            S.gazeTargetY = rand(-0.02, 0.02);
-           S.gazeTimer = rand(profile.gazeMin, profile.gazeMax) * 1.5; // Hold gaze longer
+           S.gazeTimer = rand(profile.gazeMin, profile.gazeMax) * 1.5; 
            S.isLookingAway = false;
         } else {
-           if (Math.random() < 0.35) {
+           const isEngaged = ['interestedFlash', 'engaged', 'attentive', 'activeListening', 'eyeContact', 'comforting', 'casualChat'].includes(S.currentEmotionKey) || S.rapportCurrent > 0.65;
+           const lookAwayProb = isEngaged ? 0.08 : 0.35; // Hold eye contact longer if engaged
+
+           if (Math.random() < lookAwayProb) {
                // Occasionally look away (distracted / thinking)
                S.gazeTargetX = rand(-0.35, 0.35);
                S.gazeTargetY = rand(-0.15, 0.15);
@@ -544,7 +697,7 @@ export default function AvatarCanvas({ audioPlayEvent, emotion = 'neutral', gest
       }
 
       // ── Layer 9: HAND GESTURES (Smoothness Engine) ─────────────────────
-      const targetGesture = selectGesture(S.isSpeaking, S.currentEmotionKey, S.gestureOverride, avatarUrl);
+      const targetGesture = selectGesture(S.isSpeaking, S.currentEmotionKey, S.gestureOverride, avatarUrl, S.time, S.rapportCurrent);
 
       if (targetGesture !== S.currentGesture) {
         console.log(`%c[GESTURE] ${S.currentGesture} → ${targetGesture}`, 'color:#fbbf24;font-weight:bold');
@@ -816,8 +969,8 @@ export default function AvatarCanvas({ audioPlayEvent, emotion = 'neutral', gest
         const closeUpLookY = headY; // Look straight at the head
 
         // Full-body framing
-        const fullBodyY = centerY - (fullHeight * 0.15); // Shift camera down to move character up and reveal feet
-        const fullBodyZ = fullHeight * 2.3; // Zoom out slightly more
+        const fullBodyY = centerY - (fullHeight * 0.15); 
+        const fullBodyZ = fullHeight * 2.3; 
         const fullBodyLookY = centerY; 
 
         const targetY = lerp(closeUpY, fullBodyY, normalizedZoom);
@@ -826,6 +979,39 @@ export default function AvatarCanvas({ audioPlayEvent, emotion = 'neutral', gest
 
         cameraRef.current.position.set(0, targetY, targetZ);
         cameraRef.current.lookAt(0, lookY, 0);
+      }
+
+      // ── Layer 12: BACKGROUND DEPTH & PARALLAX ──────────────────────────────
+      if (S.bgGroup) {
+        if (S.oldBgMat && S.newBgMat) {
+          S.bgFadeProgress += dt * 2.4; // ~420ms fade
+          const fade = clamp(S.bgFadeProgress, 0, 1);
+          S.oldBgMat.uniforms.opacity.value = 1.0 - fade;
+          S.newBgMat.uniforms.opacity.value = fade;
+          if (fade >= 1.0) {
+            if (S.bgOldMesh) {
+              S.bgGroup.remove(S.bgOldMesh);
+              S.bgOldMesh.geometry?.dispose?.();
+              S.bgOldMesh = null;
+            }
+            S.oldBgMat.dispose?.();
+            S.oldBgMat = null;
+            S.newBgMat.uniforms.opacity.value = 1.0;
+            prevBgTextureRef.current = currentBgTextureRef.current;
+          }
+        } else if (S.newBgMat && !S.oldBgMat) {
+          S.newBgMat.uniforms.opacity.value = 1.0;
+          prevBgTextureRef.current = currentBgTextureRef.current;
+        }
+
+        // Parallax depth effect: the far plane follows camera motion at a slower rate.
+        if (cameraRef.current) {
+          const camYOffset = cameraRef.current.position.y - 1.45;
+          const zoomDepthOffset = (S.zoomCurrent - 50) / 100;
+          S.bgGroup.position.y = 1.45 + (camYOffset * 0.15);
+          S.bgGroup.position.z = -10 - zoomDepthOffset * 0.55;
+          S.bgGroup.position.x = -S.headRotY * 1.5;
+        }
       }
 
       // ── VRM physics (spring bones, etc.) ─────────────────────────────────
@@ -852,11 +1038,110 @@ export default function AvatarCanvas({ audioPlayEvent, emotion = 'neutral', gest
         sceneRef.current?.remove(vrmRef.current.scene);
         vrmRef.current = null;
       }
+      S.bgGroup = null;
+      S.bgActiveMesh = null;
+      S.bgActiveMat = null;
+      S.bgOldMesh = null;
+      S.oldBgMat = null;
+      S.newBgMat = null;
+      S.keyLight = null;
+      S.fillLight = null;
+      S.rimLight = null;
+      S.ambientLight = null;
       // Do NOT dispose renderer here — it is persistent (rendererRef)
       // Renderer is only disposed when component fully unmounts (see cleanup below)
     };
   }, [avatarUrl]);
 
+
+  // Character/theme background image update -- independent from VRM loading.
+  useEffect(() => {
+    let cancelled = false;
+    const candidates = getBackgroundCandidates(avatarUrl, theme);
+    if (currentBgUrlRef.current && candidates.includes(currentBgUrlRef.current) && S.bgActiveMesh) return;
+
+    const loadCandidate = (index = 0) => {
+      if (cancelled || !S.bgGroup || !S.bgPlaneGeo || !S.bgTextureLoader || !S.createBackgroundMaterial) return;
+      if (index >= candidates.length) {
+        console.warn('[BG] Background image not found:', candidates);
+        return;
+      }
+
+      const url = candidates[index];
+      S.bgTextureLoader.load(url, (texture) => {
+        if (cancelled || !S.bgGroup) {
+          texture.dispose?.();
+          return;
+        }
+
+        texture.colorSpace = THREE.SRGBColorSpace;
+        const hadBackground = Boolean(S.bgActiveMesh || prevBgTextureRef.current);
+        let oldMesh = S.bgActiveMesh;
+        let oldMat = S.bgActiveMat;
+
+        if (!oldMesh && prevBgTextureRef.current) {
+          oldMat = S.createBackgroundMaterial(prevBgTextureRef.current, 1.0);
+          oldMesh = new THREE.Mesh(S.bgPlaneGeo, oldMat);
+          oldMesh.position.z = 0.1;
+          oldMesh.renderOrder = -101;
+          oldMesh.frustumCulled = false;
+          S.bgGroup.add(oldMesh);
+        }
+
+        const newMat = S.createBackgroundMaterial(texture, hadBackground ? 0.0 : 1.0);
+        const newMesh = new THREE.Mesh(S.bgPlaneGeo, newMat);
+        newMesh.position.z = 0;
+        newMesh.renderOrder = -100;
+        newMesh.frustumCulled = false;
+        S.bgGroup.add(newMesh);
+
+        S.bgOldMesh = oldMesh;
+        S.oldBgMat = oldMat;
+        S.newBgMat = newMat;
+        S.bgActiveMesh = newMesh;
+        S.bgActiveMat = newMat;
+        S.bgFadeProgress = hadBackground ? 0 : 1;
+        currentBgTextureRef.current = texture;
+        currentBgUrlRef.current = url;
+        if (!hadBackground) prevBgTextureRef.current = texture;
+      }, undefined, () => loadCandidate(index + 1));
+    };
+
+    loadCandidate();
+    return () => { cancelled = true; };
+  }, [avatarUrl, theme]);
+
+  // Lighting follows the active character room and light/dark mode.
+  useEffect(() => {
+    const avatarName = AVATAR_NAMES[avatarUrl] || 'kavya';
+    const mood = BACKGROUND_LIGHTING[avatarName] || BACKGROUND_LIGHTING.kavya;
+    const isDark = theme === 'dark';
+
+    if (sceneRef.current) {
+      sceneRef.current.background = new THREE.Color(isDark ? 0x080a12 : 0xf7f2ea);
+    }
+    if (S.keyLight) {
+      S.keyLight.color.setHex(isDark ? mood.keyDark : mood.keyLight);
+      S.keyLight.intensity = Math.PI * (isDark ? 0.95 : 0.82);
+    }
+    if (S.fillLight) {
+      S.fillLight.color.setHex(isDark ? mood.fillDark : mood.fillLight);
+      S.fillLight.intensity = isDark ? 0.58 : 0.72;
+    }
+    if (S.rimLight) {
+      S.rimLight.color.setHex(isDark ? 0xdbeafe : 0xffffff);
+      S.rimLight.intensity = isDark ? 0.36 : 0.24;
+    }
+    if (S.ambientLight) {
+      S.ambientLight.color.setHex(isDark ? 0xd7ddff : 0xfff7ed);
+      S.ambientLight.intensity = isDark ? 0.34 : 0.42;
+    }
+  }, [avatarUrl, theme]);
+
+  // Frontend-only mirroring signal from recent user text.
+  useEffect(() => {
+    S.rapportTarget = clamp(userRapportEnergy, 0, 1);
+  }, [userRapportEnergy]);
   // True unmount cleanup — dispose renderer
   useEffect(() => {
     return () => {
@@ -888,12 +1173,6 @@ export default function AvatarCanvas({ audioPlayEvent, emotion = 'neutral', gest
     }
   }, [gestureOverride]);
 
-  // Theme update
-  useEffect(() => {
-    if (sceneRef.current) {
-      sceneRef.current.background = new THREE.Color(theme === 'dark' ? 0x0b0d1a : 0xf0f4f8);
-    }
-  }, [theme]);
 
   // Zoom update
   useEffect(() => {

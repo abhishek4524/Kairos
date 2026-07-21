@@ -5,16 +5,30 @@ import torch
 import soundfile as sf
 from pydub import AudioSegment
 
-# ── Point pydub at the bundled ffmpeg in tools/ ───────────────────────────────
+import platform
+import shutil
+
+# ── Point pydub at the bundled ffmpeg in tools/ or system ffmpeg ───────────────
 _TOOLS_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "tools"))
-_FFMPEG = os.path.join(_TOOLS_DIR, "ffmpeg.exe")
-if os.path.exists(_FFMPEG):
+
+if platform.system() == "Windows":
+    _FFMPEG = os.path.join(_TOOLS_DIR, "ffmpeg.exe")
+else:
+    _FFMPEG = os.path.join(_TOOLS_DIR, "ffmpeg")
+
+if not os.path.exists(_FFMPEG):
+    _FFMPEG_SYS = shutil.which("ffmpeg")
+    if _FFMPEG_SYS:
+        _FFMPEG = _FFMPEG_SYS
+
+if _FFMPEG and os.path.exists(_FFMPEG):
     AudioSegment.converter = _FFMPEG
     AudioSegment.ffmpeg    = _FFMPEG
-    os.environ["PATH"]     = _TOOLS_DIR + os.pathsep + os.environ.get("PATH", "")
-    print(f"[TTS] Using bundled ffmpeg: {_FFMPEG}")
+    if _TOOLS_DIR in _FFMPEG:
+        os.environ["PATH"]     = _TOOLS_DIR + os.pathsep + os.environ.get("PATH", "")
+    print(f"[TTS] Using ffmpeg: {_FFMPEG}")
 else:
-    print("[TTS] ffmpeg not found in tools/ — will send WAV (no MP3 encoding needed)")
+    print("[TTS] ffmpeg not found in tools/ or system PATH — will send WAV (no MP3 encoding needed)")
 
 # ── Chatterbox-TTS Initialization ──────────────────────────────────────────────
 CHATTERBOX_AVAILABLE = False
@@ -93,37 +107,37 @@ AVATAR_VOICE_CONFIG = {
     "avatar.vrm": {   # Kavya — warm, natural
         "voice_hi": "hi-IN-SwaraNeural",
         "voice_en": "en-IN-NeerjaNeural",
-        "pitch": 0, "rate": 0,
+        "pitch": 0, "rate": +15,
     },
     "avatar1.vrm": {  # Shriya — sharper, quicker; sarcasm lands better with pace
         "voice_hi": "hi-IN-SwaraNeural",
         "voice_en": "en-IN-NeerjaNeural",
-        "pitch": +15, "rate": +8,
+        "pitch": +15, "rate": +20,
     },
     "avatar2.vrm": {  # Kumar — deep male, deliberate pace
         "voice_hi": "hi-IN-MadhurNeural",
         "voice_en": "en-IN-PrabhatNeural",
-        "pitch": -5, "rate": -5,
+        "pitch": -5, "rate": +5,
     },
     "avatar3.vrm": {  # Lucy — highest energy: fast, bright, loud
         "voice_hi": "hi-IN-SwaraNeural",
         "voice_en": "en-US-AriaNeural",
-        "pitch": +30, "rate": +20,
+        "pitch": +30, "rate": +35,
     },
-    "avatar4.vrm": {  # Sara — low-pitch, slower — soothing & calm
+    "avatar4.vrm": {  # Sara — cute girl voice
         "voice_hi": "hi-IN-SwaraNeural",
-        "voice_en": "en-GB-SoniaNeural",
-        "pitch": -15, "rate": -10,
+        "voice_en": "en-US-AnaNeural",
+        "pitch": +20, "rate": +20,
     },
     "avatar5.vrm": {  # Aanya — child voice (AnaNeural), very high pitch
         "voice_hi": "hi-IN-SwaraNeural",
         "voice_en": "en-US-AnaNeural",
-        "pitch": +50, "rate": +10,
+        "pitch": +50, "rate": +25,
     },
     "avatar6.vrm": {  # Ankur — chill male, slightly easy-going pace
         "voice_hi": "hi-IN-MadhurNeural",
         "voice_en": "en-IN-PrabhatNeural",
-        "pitch": +5, "rate": +5,
+        "pitch": +5, "rate": +15,
     },
 }
 

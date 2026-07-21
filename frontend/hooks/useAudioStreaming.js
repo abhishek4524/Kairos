@@ -15,6 +15,7 @@ function downsampleBuffer(input, fromRate, toRate = 16000) {
 
 export function useAudioStreaming({
   sessionId,
+  userId,
   selectedAvatar,
   preferredLanguage,
   onMessageReceived, // (msg) => void
@@ -41,11 +42,14 @@ export function useAudioStreaming({
 
   const selectedAvatarRef = useRef(selectedAvatar);
   const preferredLanguageRef = useRef(preferredLanguage);
+  const userIdRef = useRef(userId);
   const callbacksRef = useRef({ onMessageReceived, onStatusChange, onEmotionChange, onGestureChange, onAudioPlayEvent, onMicError });
   
   useEffect(() => {
     callbacksRef.current = { onMessageReceived, onStatusChange, onEmotionChange, onGestureChange, onAudioPlayEvent, onMicError };
   });
+
+  useEffect(() => { userIdRef.current = userId; }, [userId]);
 
   useEffect(() => {
     selectedAvatarRef.current = selectedAvatar;
@@ -130,14 +134,18 @@ export function useAudioStreaming({
       wsRef.current.close();
     }
 
-    const ws = new WebSocket(`ws://localhost:8000/ws/audio?session_id=${sessionId}`);
+    const wsUrl = import.meta.env.VITE_WS_URL || 'ws://localhost:8000';
+    const ws = new WebSocket(`${wsUrl}/ws/audio?session_id=${sessionId}`);
     ws.binaryType = 'arraybuffer';
     
     ws.onopen = () => {
+      // Send config + user identity on connect
+      // Backend will key all memory/history to this user_id
       ws.send(JSON.stringify({
         type: 'config_update',
         avatar: selectedAvatarRef.current,
-        language: preferredLanguageRef.current
+        language: preferredLanguageRef.current,
+        user_id: userIdRef.current,
       }));
       
       if (pendingIntroRef.current) {
@@ -255,6 +263,15 @@ export function useAudioStreaming({
   const sendTextInput = (text) => {
     if (!text.trim() || !wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) return;
     
+    // Immediately show the user's message in the chat (same behaviour as audio input)
+    if (callbacksRef.current.onMessageReceived) {
+      callbacksRef.current.onMessageReceived({
+        type: 'transcription',
+        role: 'user',
+        text: text.trim(),
+      });
+    }
+
     stopAndClearAudio();
     if (callbacksRef.current.onStatusChange) callbacksRef.current.onStatusChange('Thinking');
     if (callbacksRef.current.onEmotionChange) callbacksRef.current.onEmotionChange('thinking');
@@ -262,15 +279,17 @@ export function useAudioStreaming({
     wsRef.current.send(JSON.stringify({
       type: 'text_input',
       text: text.trim(),
-      language: preferredLanguage
+      language: preferredLanguage,
+      user_id: userIdRef.current,
     }));
   };
   
   const triggerIntro = (avatarFile, gesture) => {
     const introPayload = {
       type: 'intro_trigger',
-      text: 'Introduce yourself in 2-3 lines showcasing your distinct personality, style, and energy! Use a relevant gesture tag at the very beginning.',
-      language: preferredLanguageRef.current
+      text: "Do not give a long introduction. Briefly show your unique personality, state your name, and greet the user. If you already know the user's name from memory, say their name. If you don't know their name, ask for it. Keep it to 1-2 lines. Use a relevant gesture tag at the very beginning.",
+      language: preferredLanguageRef.current,
+      user_id: userIdRef.current,
     };
 
     if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {

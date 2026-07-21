@@ -9,7 +9,8 @@ export default function HeroAvatar({
   selectedAvatar, 
   zoomLevel, 
   onZoomChange, 
-  theme = 'dark' 
+  theme = 'dark',
+  userRapportEnergy = 0.35 
 }) {
   return (
     <div className="relative flex-1 flex flex-col items-center justify-center overflow-hidden w-full h-full">
@@ -28,6 +29,7 @@ export default function HeroAvatar({
           avatarUrl={`/${selectedAvatar}`} 
           theme={theme} 
           zoomLevel={zoomLevel} 
+          userRapportEnergy={userRapportEnergy}
         />
       </div>
       
@@ -36,15 +38,16 @@ export default function HeroAvatar({
 
       {/* Floating Zoom Controls — visible on all screens */}
       <div className="absolute top-4 right-4 md:top-6 md:right-6 z-20 flex items-center gap-2 md:gap-4 px-3 md:px-6 py-2 md:py-3 rounded-full glass-panel">
-        <Minimize2 size={14} className="text-white/40" />
+        <Minimize2 size={14} className="text-[var(--text-muted)] opacity-60" />
         <input
           type="range"
           min="0" max="100"
           value={zoomLevel}
           onChange={(e) => onZoomChange(parseFloat(e.target.value))}
-          className="w-24 md:w-32 accent-primary cursor-pointer h-1.5 bg-white/10 rounded-full appearance-none"
+          className="zoom-slider w-24 md:w-32 accent-primary cursor-pointer h-1.5 rounded-full appearance-none"
+          style={{ background: theme === 'light' ? undefined : 'rgba(255,255,255,0.10)' }}
         />
-        <Maximize2 size={14} className="text-white/40" />
+        <Maximize2 size={14} className="text-[var(--text-muted)] opacity-60" />
       </div>
     </div>
   );

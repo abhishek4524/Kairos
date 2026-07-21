@@ -57,16 +57,16 @@ export default function VoiceDock({
       </AnimatePresence>
 
       {/* Main Dock Container */}
-      <div className="w-full glass-panel rounded-full p-2 flex items-center shadow-[0_10px_40px_rgba(0,0,0,0.5)] border-t border-white/20">
+      <div className="w-full glass-panel rounded-full p-2 flex items-center shadow-[0_10px_40px_rgba(0,0,0,0.5)] border-t border-[var(--border-glass)]">
         
         {/* Text Input */}
-        <form onSubmit={handleSubmit} className="flex-1 flex items-center h-12 md:h-14 bg-white/5 rounded-full px-4 border border-white/5 focus-within:border-primary/50 transition-colors mr-2">
+        <form onSubmit={handleSubmit} className="flex-1 flex items-center h-12 md:h-14 bg-[var(--surface)] rounded-full px-4 border border-[var(--border-glass)] focus-within:border-primary/50 transition-colors mr-2">
           <input 
             type="text" 
             value={text}
             onChange={(e) => setText(e.target.value)}
             placeholder="Type a message..."
-            className="w-full bg-transparent text-sm md:text-base text-gray-200 outline-none placeholder:text-gray-500"
+            className="w-full bg-transparent text-sm md:text-base text-[var(--text-main)] outline-none placeholder:text-[var(--text-muted)]"
           />
           <AnimatePresence>
             {text.trim() && (

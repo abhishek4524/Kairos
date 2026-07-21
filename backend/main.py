@@ -1,4 +1,5 @@
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Depends, Header, HTTPException, status
+import os
 import uvicorn
 import asyncio
 import uuid
@@ -14,16 +15,35 @@ from llm_agent import generate_streaming_response
 from tts_agent import generate_audio_async
 import db
 
+from dotenv import load_dotenv
+load_dotenv()
+
+ADMIN_PASSWORD = os.getenv("ADMIN_PASSWORD", "admin123")
+
+def verify_admin(x_admin_password: str = Header(None)):
+    if not x_admin_password or x_admin_password != ADMIN_PASSWORD:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid or missing Admin Password"
+        )
+
 from fastapi.middleware.cors import CORSMiddleware
 
 SESSION_AVATARS = {}
 SESSION_LANGUAGES = {}
+SESSION_USER_IDS = {}  # session_id -> nanban_user_id (browser-local anonymous ID)
 
 app = FastAPI()
 
+allowed_origins_env = os.getenv("ALLOWED_ORIGINS", "")
+if allowed_origins_env:
+    allowed_origins = [origin.strip() for origin in allowed_origins_env.split(",") if origin.strip()]
+else:
+    allowed_origins = ["*"]  # Fallback for local dev
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=allowed_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -32,12 +52,30 @@ app.add_middleware(
 db.init_db()
 
 @app.get("/api/sessions")
-def get_sessions():
-    return db.get_all_sessions()
+def get_sessions(user_id: str = ""):
+    return db.get_all_sessions(user_id=user_id if user_id else None)
 
 @app.get("/api/history/{session_id}")
 def get_history(session_id: str):
     return db.get_session_history(session_id)
+
+# ── Admin API Endpoints ────────────────────────────────────────────────────
+
+@app.get("/api/admin/stats", dependencies=[Depends(verify_admin)])
+def get_admin_stats():
+    return db.get_dashboard_stats()
+
+@app.get("/api/admin/activity", dependencies=[Depends(verify_admin)])
+def get_admin_activity():
+    return db.get_activity_over_time(days=30)
+
+@app.get("/api/admin/avatars", dependencies=[Depends(verify_admin)])
+def get_admin_avatars():
+    return db.get_avatar_usage()
+
+@app.get("/api/admin/logs", dependencies=[Depends(verify_admin)])
+def get_admin_logs():
+    return db.get_detailed_logs(limit=100)
 
 # BUG-2 FIX: Regex to parse the emotion/gesture tag LLM prepends to every response.
 # - Uses [\s\n]* instead of \s* so leading newlines (common in LLM output) are consumed.
@@ -78,7 +116,38 @@ async def audio_stream(websocket: WebSocket, session_id: str = "default_session"
     await websocket.accept()
     print(f"\n[INFO] Client connected. Session ID: {session_id}")
 
-    active_task = None
+    # The effective identity for memory/history. Defaults to session_id if
+    # the frontend hasn't sent a user_id yet (backward-compatible).
+    effective_user_id = session_id
+
+    task_queue = asyncio.Queue()
+    current_processing_task = None
+
+    # Background worker to process queued messages sequentially
+    async def session_worker():
+        nonlocal current_processing_task
+        while True:
+            try:
+                args = await task_queue.get()
+                if args is None:
+                    break
+                user_txt, lang, whisp_dur, is_intro = args
+                
+                # Start processing the single message
+                current_processing_task = asyncio.create_task(
+                    process_response(user_txt, lang, whisp_dur, is_intro)
+                )
+                try:
+                    await current_processing_task
+                except asyncio.CancelledError:
+                    pass
+                finally:
+                    current_processing_task = None
+                    task_queue.task_done()
+            except Exception as err:
+                print(f"[WORKER ERROR] {err}")
+
+    worker_task = asyncio.create_task(session_worker())
 
     try:
         while True:
@@ -124,9 +193,18 @@ async def audio_stream(websocket: WebSocket, session_id: str = "default_session"
                     if payload.get("type") == "text_input":
                         user_text = payload.get("text")
                         detected_lang = payload.get("language", "en")
+                        # Honour user_id if sent with this payload
+                        if "user_id" in payload:
+                            SESSION_USER_IDS[session_id] = payload["user_id"]
+                            effective_user_id = payload["user_id"]
                         print(f"\n[TEXT INPUT]: '{user_text}'")
                         whisper_duration = 0.0
                     elif payload.get("type") == "config_update":
+                        if "user_id" in payload:
+                            uid = payload["user_id"]
+                            SESSION_USER_IDS[session_id] = uid
+                            effective_user_id = uid
+                            print(f"[CONFIG] User identity set: {uid}")
                         if "avatar" in payload:
                             avatar_file = payload.get("avatar")
                             old_avatar  = SESSION_AVATARS.get(session_id)
@@ -141,10 +219,14 @@ async def audio_stream(websocket: WebSocket, session_id: str = "default_session"
                     elif payload.get("type") == "intro_trigger":
                         user_text = payload.get("text")
                         detected_lang = payload.get("language", "en")
+                        # Honour user_id if sent with this payload
+                        if "user_id" in payload:
+                            SESSION_USER_IDS[session_id] = payload["user_id"]
+                            effective_user_id = payload["user_id"]
                         
                         from llm_agent import get_chat_history
                         current_avatar = SESSION_AVATARS.get(session_id, "avatar.vrm")
-                        history = get_chat_history(session_id, current_avatar)
+                        history = get_chat_history(effective_user_id, current_avatar)
                         
                         if len(history) > 0:
                             print(f"\n[INTRO TRIGGER] Skipped full intro for {current_avatar}, doing short welcome back.")
@@ -169,10 +251,10 @@ async def audio_stream(websocket: WebSocket, session_id: str = "default_session"
             reset_commands = ["apni memory clear karo", "clear memory", "forget everything", "meri baatein bhul jao", "sab kuch bhul jao", "memory delete karo"]
             clean_input = user_text.lower().strip()
             if any(cmd in clean_input for cmd in reset_commands):
-                print(f"[INFO] User requested memory reset for {session_id}")
-                db.clear_history(session_id)
+                print(f"[INFO] User requested memory reset for user={effective_user_id}")
+                db.clear_history(effective_user_id)
                 from llm_agent import redis_client
-                for key in redis_client.scan_iter(f"chat_history:{session_id}*"):
+                for key in redis_client.scan_iter(f"chat_history:{effective_user_id}*"):
                     redis_client.delete(key)
                 
                 reset_msg = "Maine apni saari purani memory delete kar di hai, ek fresh start ke liye!"
@@ -191,20 +273,39 @@ async def audio_stream(websocket: WebSocket, session_id: str = "default_session"
                 continue
             # ───────────────────────────────────────────────────────────────────────
 
-            # User spoke! Cancel any ongoing generation/TTS task (BARGE-IN)
-            if active_task and not active_task.done():
-                print(f"[BARGE-IN] Cancelling previous response for session {session_id}")
-                active_task.cancel()
-
+            # ── BARGE-IN & QUEUEING LOGIC ─────────────────────────────────────────
+            # If voice input and speech sustained, it's an interruption -> cancel current & clear queue
             if is_audio_input:
+                if current_processing_task and not current_processing_task.done():
+                    if transcriber.get_speech_chunk_count() >= transcriber._bargeIn_min_chunks:
+                        print(f"[BARGE-IN] Voice interruption detected! Cancelling current response.")
+                        current_processing_task.cancel()
+                        # Clear any pending queued questions
+                        while not task_queue.empty():
+                            try:
+                                task_queue.get_nowait()
+                                task_queue.task_done()
+                            except asyncio.QueueEmpty:
+                                break
+                    else:
+                        print(f"[BARGE-IN] Debounced — only {transcriber.get_speech_chunk_count()} chunk(s). Ignoring noise.")
+                        continue # Ignore this input completely
+
                 await websocket.send_json({
                     "type": "transcription",
                     "role": "user",
                     "text": user_text,
                     "language": detected_lang,
                 })
+                # Add to queue
+                await task_queue.put((user_text, detected_lang, whisper_duration, is_intro_trigger))
 
-            # Define background generation task
+            else:
+                # Text input -> Queue sequentially, do not barge-in. Answers multiple text questions one-by-one.
+                print(f"[QUEUE] Added text question to queue.")
+                await task_queue.put((user_text, detected_lang, whisper_duration, is_intro_trigger))
+
+            # Define background generation task (used by the worker)
             async def process_response(u_text, lang, whisp_time, skip_memory=False):
                 import re as _re
                 import threading
@@ -219,10 +320,13 @@ async def audio_stream(websocket: WebSocket, session_id: str = "default_session"
                 loop = asyncio.get_running_loop()
                 stop_event = threading.Event()
 
+                # Use the persistent user identity for memory/history
+                memory_id = SESSION_USER_IDS.get(session_id, session_id)
+
                 def producer():
                     try:
                         for c in generate_streaming_response(
-                            session_id, u_text, current_avatar, lang, skip_memory=skip_memory
+                            memory_id, u_text, current_avatar, lang, skip_memory=skip_memory
                         ):
                             if stop_event.is_set():
                                 break
@@ -282,16 +386,16 @@ async def audio_stream(websocket: WebSocket, session_id: str = "default_session"
                                 sentence_buffer = sentence_buffer[end_idx:]
 
                                 if sentence:
-                                    if not first_sentence_sent:
-                                        clean_full_text = EMOTION_RE.sub("", full_response_acc).strip()
-                                        await safe_send_json({
-                                            "type": "transcription",
-                                            "role": "assistant",
-                                            "text": clean_full_text + "...",
-                                            "emotion": emotion,
-                                            "language": lang,
-                                        })
-                                        first_sentence_sent = True
+                                    # Mid-stream update: send accumulated text so far with "..."
+                                    clean_partial_text = EMOTION_RE.sub("", full_response_acc).strip()
+                                    await safe_send_json({
+                                        "type": "transcription",
+                                        "role": "assistant",
+                                        "text": clean_partial_text + "...",
+                                        "emotion": emotion or "neutral",
+                                        "language": lang,
+                                    })
+                                    first_sentence_sent = True
 
                                     print(f"[TTS CHUNK] {sentence}")
                                     audio_bytes, visemes = await generate_audio_async(sentence, lang, emotion, current_avatar)
@@ -306,13 +410,14 @@ async def audio_stream(websocket: WebSocket, session_id: str = "default_session"
                         if not emotion:
                             from llm_agent import AVATAR_CONFIG as _AV_CFG
                             emotion = _AV_CFG.get(current_avatar, {}).get("default_emotion", "neutral")
+
                         if not first_sentence_sent:
-                            clean_full_text = EMOTION_RE.sub("", full_response_acc).strip()
+                            clean_partial_text = EMOTION_RE.sub("", full_response_acc).strip()
                             await safe_send_json({
                                 "type": "transcription",
                                 "role": "assistant",
-                                "text": clean_full_text,
-                                "emotion": emotion,
+                                "text": clean_partial_text + "...",
+                                "emotion": emotion or "neutral",
                                 "language": lang,
                             })
 
@@ -323,14 +428,14 @@ async def audio_stream(websocket: WebSocket, session_id: str = "default_session"
                         if audio_bytes:
                             await safe_send_bytes(audio_bytes)
 
-                    # Final UI update with full clean text
+                    # ONE final transcription message with the complete clean text
                     if full_response_acc:
                         clean_full_text = EMOTION_RE.sub("", full_response_acc).strip()
                         await safe_send_json({
                             "type": "transcription",
                             "role": "assistant",
                             "text": clean_full_text,
-                            "emotion": emotion,
+                            "emotion": emotion or "neutral",
                             "language": lang,
                         })
 
@@ -340,19 +445,17 @@ async def audio_stream(websocket: WebSocket, session_id: str = "default_session"
                     print(f"[INFO] Response cancelled for session {session_id} (barge-in or disconnect)")
                     raise  # Re-raise so the outer task knows it was cancelled
 
-            # Start the generation task
-            active_task = asyncio.create_task(
-                process_response(user_text, detected_lang, whisper_duration, is_intro_trigger)
-            )
-
 
     except WebSocketDisconnect:
         print(f"\n[INFO] Client disconnected cleanly (Exception). Session {session_id} ended.")
     except Exception as e:
         print(f"\n[ERROR] WebSocket error: {e}")
     finally:
-        if active_task and not active_task.done():
-            active_task.cancel()
+        # Cleanup tasks
+        if current_processing_task and not current_processing_task.done():
+            current_processing_task.cancel()
+        if worker_task and not worker_task.done():
+            worker_task.cancel()
 
 
 @app.get("/")
