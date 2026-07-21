@@ -349,6 +349,8 @@ class RealTimeTranscriber:
                 "file": wav_buf,
                 "model": "whisper-large-v3-turbo",
                 "response_format": "text",
+                "temperature": 0.0,
+                "condition_on_previous_text": False,
             }
             if expected_lang and expected_lang != "auto":
                 kwargs["language"] = expected_lang
@@ -357,6 +359,19 @@ class RealTimeTranscriber:
 
             # result is a plain string when response_format="text"
             text = result.strip() if isinstance(result, str) else (result.text or "").strip()
+            
+            # ── Whisper Hallucination Filter ──
+            # Whisper often hallucinates these phrases on silence/noise
+            _lower = text.lower().replace(".", "").replace(",", "").replace("?", "").replace("!", "").strip()
+            _hallucinations = [
+                "thank you", "hello", "am i going on it", "im going to go", 
+                "i never gave an answer", "subtitles by amaraorg", "connor", 
+                "kahneman", "haneme gel", "you", "so", "and then", "on it",
+                "im mcgowan on it", "going on it", "on a"
+            ]
+            if not _lower or _lower in _hallucinations:
+                return "", expected_lang
+
             return text, expected_lang
 
         except Exception as e:
