@@ -22,27 +22,11 @@ STT_MODE = os.environ.get("STT_MODE", "local").lower()
 
 # ── Conditional imports ────────────────────────────────────────────────────────
 if STT_MODE == "local":
-    import sys
-    import torch  # helps CTranslate2 find CUDA DLLs on Windows
-
-    # --- Windows DLL Workaround for CTranslate2 ---
     try:
-        import site
-        for pkg in site.getsitepackages():
-            cublas_bin = os.path.join(pkg, "nvidia", "cublas", "bin")
-            cudnn_bin  = os.path.join(pkg, "nvidia", "cudnn",  "bin")
-            if os.path.exists(cublas_bin):
-                os.environ["PATH"] = cublas_bin + os.pathsep + os.environ.get("PATH", "")
-                if hasattr(os, "add_dll_directory"):
-                    os.add_dll_directory(cublas_bin)
-            if os.path.exists(cudnn_bin):
-                os.environ["PATH"] = cudnn_bin + os.pathsep + os.environ.get("PATH", "")
-                if hasattr(os, "add_dll_directory"):
-                    os.add_dll_directory(cudnn_bin)
-    except Exception:
-        pass
-
-    from faster_whisper import WhisperModel
+        from faster_whisper import WhisperModel
+    except ImportError:
+        WhisperModel = None
+        print("[WARNING] faster-whisper not installed. Local STT will fail.")
     MODELS_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "models"))
 
 elif STT_MODE == "api":
@@ -77,6 +61,8 @@ class RealTimeTranscriber:
 
         # ── LOCAL mode: load faster-whisper ───────────────────────────────────
         if self.stt_mode == "local":
+            if WhisperModel is None:
+                raise RuntimeError("faster-whisper is not installed. Use STT_MODE=api or pip install faster-whisper")
             print(f"[STT] Running in LOCAL mode (faster-whisper GPU/CPU)")
             print(f"Loading faster-whisper model '{model_size}' on {device}...")
             try:

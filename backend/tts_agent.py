@@ -1,7 +1,6 @@
 import os
 import io
 import asyncio
-import torch
 import soundfile as sf
 from pydub import AudioSegment
 
@@ -31,38 +30,10 @@ else:
     print("[TTS] ffmpeg not found in tools/ or system PATH — will send WAV (no MP3 encoding needed)")
 
 # ── Chatterbox-TTS Initialization ──────────────────────────────────────────────
+# (Chatterbox local TTS engine has been completely removed in favor of Edge-TTS)
 CHATTERBOX_AVAILABLE = False
 chatterbox_model = None
 CHATTERBOX_SR = 24000
-
-SUPPORTED_LANGUAGES = {'ar', 'da', 'de', 'el', 'en', 'es', 'fi', 'fr', 'he',
-                       'hi', 'it', 'ja', 'ko', 'ms', 'nl', 'no', 'pl', 'pt',
-                       'ru', 'sv', 'sw', 'tr', 'zh'}
-
-try:
-    # Disable Chatterbox loading to save VRAM and avoid autoregressive slowdowns
-    if False:
-        from chatterbox import ChatterboxMultilingualTTS
-
-        _device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-        print(f"Loading Chatterbox Multilingual TTS on {_device}...")
-
-        # Patch torch.load to always use map_location so CUDA-saved weights load on CPU too
-        _orig_torch_load = torch.load
-        def _patched_load(f, **kwargs):
-            kwargs.setdefault("map_location", _device)
-            return _orig_torch_load(f, **kwargs)
-        torch.load = _patched_load
-
-        chatterbox_model = ChatterboxMultilingualTTS.from_pretrained(_device)
-        torch.load = _orig_torch_load  # restore
-
-        CHATTERBOX_SR = getattr(chatterbox_model, 'sr', 24000)
-        print(f"Chatterbox-TTS loaded on {_device}. SR={CHATTERBOX_SR}")
-        CHATTERBOX_AVAILABLE = True
-except Exception as e:
-    print(f"[WARNING] Chatterbox-TTS failed to load: {e}")
-    print("[INFO] Will use Edge-TTS as primary.")
 
 # ── Edge-TTS (fallback) ────────────────────────────────────────────────────────
 import edge_tts
@@ -235,57 +206,6 @@ async def _generate_edge_audio(text: str, language: str, emotion: str = "neutral
 # ─────────────────────────────────────────────────────────────────────────────
 async def generate_audio_async(text: str, language: str = "en", emotion: str = "neutral", avatar: str = "avatar.vrm") -> tuple[bytes, dict]:
     """
-    Primary: Edge-TTS (Fast & reliable for real-time)
-    Fallback: Chatterbox (Disabled for real-time)
+    Edge-TTS (Fast & reliable for real-time)
     """
-    # Use Edge-TTS directly as primary to avoid 100+ second response times on RTX 3050
-    return await _generate_edge_audio(text, language, emotion, avatar)
-
-    # ── Try Chatterbox first (DISABLED) ───────────────────────────────────────
-    if False and CHATTERBOX_AVAILABLE and chatterbox_model is not None:
-        # Emotion → exaggeration
-        if emotion in ("happy", "surprised"):
-            exaggeration = 0.75
-        elif emotion in ("sad", "thinking"):
-            exaggeration = 0.35
-        else:
-            exaggeration = 0.5
-
-        lang_id = language if language in SUPPORTED_LANGUAGES else "en"
-
-        base_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "models"))
-        ref_voice = os.path.join(base_dir, "reference_voice.WAV")
-        if not os.path.exists(ref_voice):
-            ref_voice = os.path.join(base_dir, "reference_voice.wav")
-
-        print(f"[CHATTERBOX] Generating: '{text[:60]}' [lang={lang_id}, exag={exaggeration}]")
-
-        try:
-            def run_chatterbox():
-                wav_tensor = chatterbox_model.generate(
-                    text=text,
-                    language_id=lang_id,
-                    audio_prompt_path=ref_voice if os.path.exists(ref_voice) else None,
-                    exaggeration=exaggeration,
-                )
-                audio_np = wav_tensor.squeeze().cpu().numpy()
-                # Output as WAV bytes (works without ffmpeg)
-                wav_io = io.BytesIO()
-                sf.write(wav_io, audio_np, CHATTERBOX_SR, format="WAV")
-                wav_bytes = wav_io.getvalue()
-                duration = len(audio_np) / CHATTERBOX_SR
-                print(f"[CHATTERBOX] Generated {len(wav_bytes)} WAV bytes, {duration:.2f}s")
-                return wav_bytes, duration
-
-            import time
-            t0 = time.time()
-            audio_bytes, audio_duration = await asyncio.to_thread(run_chatterbox)
-            print(f"[CHATTERBOX] Total time: {time.time()-t0:.2f}s")
-            return audio_bytes, _generate_fallback_visemes(audio_duration)
-
-        except Exception as e:
-            print(f"[CHATTERBOX] Error: {e}. Falling back to Edge-TTS...")
-            import traceback; traceback.print_exc()
-
-    # ── Edge-TTS fallback ────────────────────────────────────────────────────
     return await _generate_edge_audio(text, language, emotion, avatar)

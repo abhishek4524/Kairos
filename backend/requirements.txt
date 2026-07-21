@@ -1,7 +1,6 @@
 fastapi
 uvicorn
 websockets
-faster-whisper
 numpy
 groq
 redis
@@ -9,4 +8,3 @@ edge-tts
 pydub
 openai
 python-dotenv
-
