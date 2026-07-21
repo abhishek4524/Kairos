@@ -350,7 +350,6 @@ class RealTimeTranscriber:
                 "model": "whisper-large-v3-turbo",
                 "response_format": "text",
                 "temperature": 0.0,
-                "condition_on_previous_text": False,
             }
             if expected_lang and expected_lang != "auto":
                 kwargs["language"] = expected_lang
