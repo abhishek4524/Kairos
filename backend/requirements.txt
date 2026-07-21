@@ -8,3 +8,5 @@ edge-tts
 pydub
 openai
 python-dotenv
+pymongo
+
