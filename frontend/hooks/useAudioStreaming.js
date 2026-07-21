@@ -134,7 +134,10 @@ export function useAudioStreaming({
       wsRef.current.close();
     }
 
-    const wsUrl = import.meta.env.VITE_WS_URL || 'ws://localhost:8000';
+    let wsUrl = import.meta.env.VITE_WS_URL || 'ws://localhost:8000';
+    if (window.location.protocol === 'https:' && wsUrl.startsWith('ws://')) {
+      wsUrl = wsUrl.replace('ws://', 'wss://');
+    }
     const ws = new WebSocket(`${wsUrl}/ws/audio?session_id=${sessionId}`);
     ws.binaryType = 'arraybuffer';
     
