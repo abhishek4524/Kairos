@@ -6,7 +6,5 @@ groq
 redis
 edge-tts
 pydub
-pyaudioop
 openai
 python-dotenv
-
