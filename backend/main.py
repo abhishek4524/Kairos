@@ -6,6 +6,7 @@ import uuid
 import re
 import time
 import warnings
+from urllib.parse import urlsplit
 
 warnings.filterwarnings("ignore", category=FutureWarning)
 warnings.filterwarnings("ignore", category=UserWarning)
@@ -35,18 +36,37 @@ SESSION_USER_IDS = {}  # session_id -> nanban_user_id (browser-local anonymous I
 
 app = FastAPI()
 
-allowed_origins_env = os.getenv("ALLOWED_ORIGINS", "")
-if allowed_origins_env:
-    allowed_origins = [origin.strip() for origin in allowed_origins_env.split(",") if origin.strip()]
-else:
-    allowed_origins = ["*"]  # Fallback for local dev
+def _normalize_cors_origin(origin):
+    origin = origin.strip()
+    if origin == "*":
+        return origin
+
+    parsed = urlsplit(origin)
+    if parsed.scheme and parsed.netloc:
+        return f"{parsed.scheme}://{parsed.netloc}"
+    return origin.rstrip("/")
+
+
+def _parse_cors_origins():
+    origins_env = os.getenv("CORS_ORIGINS") or os.getenv("ALLOWED_ORIGINS", "")
+    if not origins_env:
+        return ["*"]  # Fallback for local dev
+
+    origins = []
+    for origin in origins_env.split(","):
+        normalized_origin = _normalize_cors_origin(origin)
+        if normalized_origin:
+            origins.append(normalized_origin)
+    return origins or ["*"]
+
+allowed_origins = _parse_cors_origins()
 
 app.add_middleware(
     CORSMiddleware,
     allow_origins=allowed_origins,
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+    allow_headers=["Authorization", "Content-Type", "X-Admin-Password"],
 )
 
 db.init_db()
