@@ -16,7 +16,20 @@ if os.path.exists(env_path):
                 os.environ[key.strip()] = val.strip().strip('"\'')
 
 # ── Redis ─────────────────────────────────────────────────────────────────────
-redis_client = redis.Redis(host='localhost', port=6379, db=0, decode_responses=True)
+_redis_host     = os.getenv('REDIS_HOST', 'localhost')
+_redis_port     = int(os.getenv('REDIS_PORT', 6379))
+_redis_password = os.getenv('REDIS_PASSWORD', None)
+_redis_ssl      = bool(_redis_password)   # Redis Cloud requires SSL; localhost does not
+
+redis_client = redis.Redis(
+    host=_redis_host,
+    port=_redis_port,
+    password=_redis_password,
+    ssl=_redis_ssl,
+    db=0,
+    decode_responses=True,
+)
+print(f"[Redis] Connecting to {_redis_host}:{_redis_port} (ssl={_redis_ssl})")
 
 # ── Primary: Groq ─────────────────────────────────────────────────────────────
 try:
