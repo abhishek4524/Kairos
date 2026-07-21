@@ -1,7 +1,6 @@
 import os
 import io
 import asyncio
-import soundfile as sf
 from pydub import AudioSegment
 
 import platform
