@@ -2,6 +2,7 @@ import React, { useEffect, useRef } from 'react';
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader';
 import { VRMLoaderPlugin, VRMExpressionPresetName } from '@pixiv/three-vrm';
+import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Utilities
@@ -82,7 +83,8 @@ const EMOTION_WEIGHT_MAX = 0.65;
 // ─────────────────────────────────────────────────────────────────────────────
 const GESTURES = {
   // ── Core / neutral ────────────────────────────────────────────────────────────
-  neutral:         { leftUpperArm: { x:0.10, y:0.00, z:-1.15 }, rightUpperArm: { x:0.10, y:0.00, z: 1.15 }, leftLowerArm: { x:0.18, y:0.00, z:-0.12 }, rightLowerArm: { x:0.18, y:0.00, z: 0.12 }, leftHand: { x:0.00, y: 0.10, z: 0.00 }, rightHand: { x:0.00, y:-0.10, z: 0.00 } },
+  // Natural relaxed standing — arms hang naturally at sides, slight bend at elbow
+  neutral:         { leftUpperArm: { x:0.08, y:0.00, z:-1.20 }, rightUpperArm: { x:0.08, y:0.00, z: 1.20 }, leftLowerArm: { x:0.10, y:0.00, z:-0.08 }, rightLowerArm: { x:0.10, y:0.00, z: 0.08 }, leftHand: { x:0.00, y: 0.05, z:-0.02 }, rightHand: { x:0.00, y:-0.05, z: 0.02 } },
   
   // ── Greeting Gestures ────────────────────────────────────────────────────────
   namaste:         { leftUpperArm: { x:0.10, y: 0.20, z:-0.60 }, rightUpperArm: { x:0.10, y:-0.20, z: 0.60 }, leftLowerArm: { x:-1.00, y:-0.10, z: 0.10 }, rightLowerArm: { x:-1.00, y: 0.10, z:-0.10 }, leftHand: { x:0.10, y: 0.10, z: 0.10 }, rightHand: { x:0.10, y:-0.10, z:-0.10 } },
@@ -288,6 +290,7 @@ export default function AvatarCanvas({ audioPlayEvent, emotion = 'neutral', gest
   const prevBgTextureRef = useRef(null);
   const currentBgTextureRef = useRef(null);
   const currentBgUrlRef = useRef(null);
+  const controlsRef = useRef(null);
   
   // Single mutable state object — updated every frame, never triggers re-renders
   const S = useRef({
@@ -299,13 +302,22 @@ export default function AvatarCanvas({ audioPlayEvent, emotion = 'neutral', gest
     swayPhaseY:  rand(0, Math.PI * 2),
     headRotX: 0, headRotY: 0, headRotZ: 0,
     nodPhase: 0,
+    // Multi-axis speaking head bob
+    speakBobPhaseX: rand(0, Math.PI * 2),
+    speakBobPhaseY: rand(0, Math.PI * 2),
+    speakBobPhaseZ: rand(0, Math.PI * 2),
 
     blinkTimer: rand(1, 4), isBlinking: false,
     blinkProgress: 0, blinkWeight: 0,
+    // Double blink state
+    doubleBlink: false, doubleBlinkTimer: 0,
 
     gazeTimer:    rand(2, 5), isLookingAway: false,
     gazeTargetX:  0, gazeTargetY:  0,
     gazeCurrentX: 0, gazeCurrentY: 0,
+    // Speaking gaze saccade
+    speakGazeTimer: rand(0.4, 1.2),
+    speakGazeX: 0, speakGazeY: 0,
 
     emotionPreset: null, emotionWeight: 0, emotionTarget: 0,
     currentEmotionKey: 'neutral',
@@ -315,7 +327,16 @@ export default function AvatarCanvas({ audioPlayEvent, emotion = 'neutral', gest
     // ── Body / Gesture ────────────────────────────────────────────────────
     hipSwayPhase: rand(0, Math.PI * 2),
     hipRotZ: 0,
+    hipRotY: 0,          // NEW: forward-back rock while speaking
     spineTargetX: 0,
+    spineRotY: 0,        // NEW: gentle torso twist while speaking
+    // Idle micro-fidget
+    fidgetTimer: rand(6, 14), isFidgeting: false,
+    fidgetPhase: 0, fidgetBone: 'rightLowerArm',
+    // Speaking weight shift — hip shifts with speech rhythm
+    speakWeightPhase: rand(0, Math.PI * 2),
+    speakLeanTarget: 0,   // forward lean when speaking
+    speakLeanCurrent: 0,
 
     currentGesture: 'neutral',
     gestureOverride: null,
@@ -379,6 +400,16 @@ export default function AvatarCanvas({ audioPlayEvent, emotion = 'neutral', gest
       renderer = new THREE.WebGLRenderer({ canvas: canvasRef.current, antialias: true, alpha: false });
       rendererRef.current = renderer;
     }
+
+    // OrbitControls setup for full 3D viewport control
+    const controls = new OrbitControls(camera, renderer.domElement);
+    controls.enableDamping = true;
+    controls.dampingFactor = 0.05;
+    controls.minDistance = 0.3; // Allow close zoom-in on face
+    controls.maxDistance = 10.0; // Don't zoom out too far
+    controls.enablePan = true;  // Allow panning (right click drag / multi-finger swipe)
+    controls.target.set(0, 1.35, 0); // Focus on head area initially
+    controlsRef.current = controls;
     renderer.setSize(getW(), getH());
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     renderer.outputColorSpace = THREE.SRGBColorSpace;
@@ -485,6 +516,15 @@ export default function AvatarCanvas({ audioPlayEvent, emotion = 'neutral', gest
       S.avatarHeadY = headY;
       S.avatarCenterY = (box.max.y + box.min.y) / 2;
       console.log(`%c[VRM] Calibration: Height=${height.toFixed(2)}m, HeadY=${headY.toFixed(2)}m`, 'color:#a78bfa;font-weight:bold');
+      
+      // Calibrate initial OrbitControls targeting
+      if (controlsRef.current) {
+        const controls = controlsRef.current;
+        const targetY = headY;
+        controls.target.set(0, targetY, 0);
+        camera.position.set(0, targetY, 0.7); // Focus closely on face
+        controls.update();
+      }
       // ──────────────────────────────────────────────────
 
       if (em) {
@@ -569,15 +609,61 @@ export default function AvatarCanvas({ audioPlayEvent, emotion = 'neutral', gest
       if (rShoulder) { rShoulder.rotation.z = -breathVal * 0.04 - shoulderRaise; rShoulder.rotation.y = -shoulderOpen; }
 
       // ── Layer 2: HIP WEIGHT SHIFT (Mirroring user energy) ────────────────
-      // volBoost represents conversational energy level. High energy -> slightly faster sway.
-      S.hipSwayPhase += (dt + dt * jitter) * (S.isSpeaking ? (0.75 + volBoost * 0.6) : 0.50 * mirrorLift) * profile.swayRate;
-      const hipTarget = Math.sin(S.hipSwayPhase) * (S.isSpeaking ? 0.012 : 0.020 * (0.9 + S.rapportCurrent * 0.25)) * profile.swayAmp;
-      S.hipRotZ = lerp(S.hipRotZ, hipTarget, dt * 1.5);
+      // While speaking: hips subtly shift side-to-side with speech rhythm (natural weight transfer)
+      S.hipSwayPhase += (dt + dt * jitter) * (S.isSpeaking ? (0.80 + volBoost * 0.5) : 0.45 * mirrorLift) * profile.swayRate;
+      const hipTarget = Math.sin(S.hipSwayPhase) * (S.isSpeaking ? 0.018 : 0.022 * (0.9 + S.rapportCurrent * 0.25)) * profile.swayAmp;
+      S.hipRotZ = lerp(S.hipRotZ, hipTarget, dt * 1.8);
+
+      // Speaking: subtle forward-back weight rock (heel to toe) — very human
+      if (S.isSpeaking) {
+        S.speakWeightPhase += dt * (1.1 + volBoost * 0.4);
+        const fwdRock = Math.sin(S.speakWeightPhase * 0.7) * 0.006 * (0.8 + volBoost * 0.5);
+        S.hipRotY = lerp(S.hipRotY, fwdRock, dt * 2.0);
+      } else {
+        S.hipRotY = lerp(S.hipRotY, 0, dt * 1.5);
+      }
+
+      // Speaking forward lean — avatar leans slightly into conversation
+      S.speakLeanTarget = S.isSpeaking ? (-0.018 - volBoost * 0.012) : 0;
+      S.speakLeanCurrent = lerp(S.speakLeanCurrent, S.speakLeanTarget, dt * 1.2);
 
       const hipsNode = getNode('hips');
       if (hipsNode) {
         hipsNode.rotation.z = S.hipRotZ;
-        hipsNode.rotation.x = breathVal * 0.005;
+        hipsNode.rotation.x = breathVal * 0.005 + S.speakLeanCurrent;
+        hipsNode.rotation.y = S.hipRotY;
+      }
+
+      // ── Layer 2.5: NATURAL LOWER BODY ANIMATION (Weight shift + heel/leg bobbing) ──
+      const leftUpperLeg = getNode('leftUpperLeg');
+      const rightUpperLeg = getNode('rightUpperLeg');
+      const leftLowerLeg = getNode('leftLowerLeg');
+      const rightLowerLeg = getNode('rightLowerLeg');
+      const leftFoot = getNode('leftFoot');
+      const rightFoot = getNode('rightFoot');
+
+      if (leftUpperLeg && rightUpperLeg && leftLowerLeg && rightLowerLeg && leftFoot && rightFoot) {
+        // Hips shift sways the weight.
+        const hipShift = S.hipRotZ; // sways between ~-0.025 and 0.025
+        
+        // Cyclic weight shifting rhythm (every ~8 seconds, shifting weight left to right)
+        const shiftCycle = S.time * 0.78;
+        const leftLegLift = Math.max(0, Math.sin(shiftCycle)) * 0.22;  // bent and lifted slightly (heel raise)
+        const rightLegLift = Math.max(0, -Math.sin(shiftCycle)) * 0.22;
+        
+        const leftLegBend = hipShift > 0 ? (hipShift * 3.5) : 0;
+        const rightLegBend = hipShift <= 0 ? (-hipShift * 3.5) : 0;
+
+        // Apply natural knee bends, thigh rotations, and ankle rotations to simulate natural shifting
+        leftUpperLeg.rotation.x = lerp(leftUpperLeg.rotation.x, -leftLegLift * 0.7 - leftLegBend * 0.4, dt * 2.0);
+        leftUpperLeg.rotation.z = lerp(leftUpperLeg.rotation.z, -hipShift * 0.5, dt * 2.0);
+        leftLowerLeg.rotation.x = lerp(leftLowerLeg.rotation.x, leftLegLift * 1.5 + leftLegBend * 1.2, dt * 2.0);
+        leftFoot.rotation.x = lerp(leftFoot.rotation.x, leftLegLift * 0.8 + leftLegBend * 0.6, dt * 2.0);
+
+        rightUpperLeg.rotation.x = lerp(rightUpperLeg.rotation.x, -rightLegLift * 0.7 - rightLegBend * 0.4, dt * 2.0);
+        rightUpperLeg.rotation.z = lerp(rightUpperLeg.rotation.z, -hipShift * 0.5, dt * 2.0);
+        rightLowerLeg.rotation.x = lerp(rightLowerLeg.rotation.x, rightLegLift * 1.5 + rightLegBend * 1.2, dt * 2.0);
+        rightFoot.rotation.x = lerp(rightFoot.rotation.x, rightLegLift * 0.8 + rightLegBend * 0.6, dt * 2.0);
       }
 
       // ── Layer 3: SPINE LEAN (Emotion-driven Posture) ─────────────────────
@@ -588,62 +674,120 @@ export default function AvatarCanvas({ audioPlayEvent, emotion = 'neutral', gest
         relaxed: 0.01,
       };
       
-      S.spineTargetX = POSTURE_OFFSETS[S.currentEmotionKey] ?? (S.isSpeaking ? 0.03 : 0.01);
-      
+      S.spineTargetX = (POSTURE_OFFSETS[S.currentEmotionKey] ?? (S.isSpeaking ? 0.02 : 0.01)) + S.speakLeanCurrent * 0.6;
+
+      // Speaking torso twist — natural lateral spine rotation while talking
+      if (S.isSpeaking) {
+        S.spineRotY = lerp(S.spineRotY, Math.sin(S.hipSwayPhase * 0.5) * 0.025 * profile.swayAmp, dt * 1.2);
+      } else {
+        S.spineRotY = lerp(S.spineRotY, 0, dt * 1.0);
+      }
+
       const spineNode = getNode('spine');
       if (spineNode) {
-        // Apply emotion posture + subtle breath curve
+        // Apply emotion posture + subtle breath curve + speaking torso twist
         spineNode.rotation.x = lerp(spineNode.rotation.x, S.spineTargetX + breathVal * 0.008, dt * 1.5);
+        spineNode.rotation.y = lerp(spineNode.rotation.y, S.spineRotY, dt * 1.5);
       }
 
       // ── Layer 4: HEAD IDLE SWAY & TILT ───────────────────────────────────
-      S.swayPhaseX += (dt + dt * jitter * 0.5) * (S.isSpeaking ? 0.20 : 0.10 * mirrorLift) * profile.swayRate;
-      S.swayPhaseY += (dt + dt * jitter * 0.5) * (S.isSpeaking ? 0.15 : 0.08 * mirrorLift) * profile.swayRate;
-      const swayAmp = (S.isSpeaking ? (0.006 + volBoost * 0.005) : 0.014 * (0.88 + S.rapportCurrent * 0.28)) * profile.swayAmp;
+      // Idle: gentle, slow sway. Speaking: reduced sway (head is actively moving with speech)
+      S.swayPhaseX += (dt + dt * jitter * 0.5) * (S.isSpeaking ? 0.12 : 0.10 * mirrorLift) * profile.swayRate;
+      S.swayPhaseY += (dt + dt * jitter * 0.5) * (S.isSpeaking ? 0.10 : 0.08 * mirrorLift) * profile.swayRate;
+      const swayAmp = (S.isSpeaking ? 0.004 : 0.013 * (0.88 + S.rapportCurrent * 0.28)) * profile.swayAmp;
       S.headRotX = lerp(S.headRotX, Math.sin(S.swayPhaseX) * swayAmp, dt * 1.8);
       S.headRotY = lerp(S.headRotY, Math.sin(S.swayPhaseY) * swayAmp * 0.6, dt * 1.8);
       
-      // Thinking head tilt
+      // Thinking head tilt — slight head tilt when pondering
       let targetHeadZ = (S.currentEmotionKey === 'thinking') ? -0.08 : 0;
       S.headRotZ = lerp(S.headRotZ, targetHeadZ, dt * 2.0);
 
-      // ── Layer 5: SPEAKING HEAD NOD (Voice-reactive) ──────────────────────
-      let nodX = 0, nodY = 0;
+      // ── Layer 5: HUMAN-LIKE SPEAKING HEAD MOTION ──────────────────────────
+      // Real humans move head in 3 axes while speaking: nod (X), side-to-side (Y), slight roll (Z)
+      // This replaces the old single-axis nod with a richer multi-axis motion.
+      let speakX = 0, speakY = 0, speakZ = 0;
       if (S.isSpeaking) {
-        S.nodPhase += dt * (2.2 + volBoost * 1.0); // Faster nod when loud
-        const nodAmp = 0.028 + volBoost * 0.03;    // Deeper nod when loud
-        nodX = Math.sin(S.nodPhase)              * nodAmp;
-        nodY = Math.sin(S.nodPhase * 0.6 + 0.9) * (nodAmp * 0.4);
+        // Advance all three independent oscillators at slightly different rates
+        S.speakBobPhaseX += dt * (1.8 + volBoost * 0.9);
+        S.speakBobPhaseY += dt * (1.3 + volBoost * 0.5);
+        S.speakBobPhaseZ += dt * (0.9 + volBoost * 0.3);
+
+        const bobAmpBase = 0.022 + volBoost * 0.018;
+        // X: primary nod up-down (most visible)
+        speakX = Math.sin(S.speakBobPhaseX) * bobAmpBase;
+        // Y: side lean — like tilting head while making a point
+        speakY = Math.sin(S.speakBobPhaseY) * (bobAmpBase * 0.45);
+        // Z: subtle roll — adds organic feel, prevents robotic look
+        speakZ = Math.sin(S.speakBobPhaseZ) * (bobAmpBase * 0.18);
+        // Emphasis on loud syllables — snap head forward briefly
+        if (volBoost > 0.7) {
+          speakX += (volBoost - 0.7) * 0.04;
+        }
+      } else {
+        // Smoothly return bob phases to 0 influence
+        speakX = speakY = speakZ = 0;
       }
+
       const headNode = getNode('head');
       const neckNode = getNode('neck');
       if (headNode) {
-        headNode.rotation.x = lerp(headNode.rotation.x, S.headRotX + nodX, dt * 3.5);
-        headNode.rotation.y = lerp(headNode.rotation.y, S.headRotY + nodY, dt * 3.5);
-        headNode.rotation.z = S.headRotZ;
+        // Neck/Head turns slightly with the gaze direction (natural visual tracking)
+        const gazeHeadX = -S.gazeCurrentY * 0.22; // tilt head up/down slightly when looking up/down
+        const gazeHeadY = S.gazeCurrentX * 0.30;  // turn head left/right slightly when looking left/right
+        headNode.rotation.x = lerp(headNode.rotation.x, S.headRotX + speakX + gazeHeadX, dt * 4.0);
+        headNode.rotation.y = lerp(headNode.rotation.y, S.headRotY + speakY + gazeHeadY, dt * 4.0);
+        headNode.rotation.z = lerp(headNode.rotation.z, S.headRotZ + speakZ, dt * 4.0);
       }
       if (neckNode) {
-        neckNode.rotation.x = lerp(neckNode.rotation.x, (S.headRotX + nodX) * 0.4, dt * 3.5);
-        neckNode.rotation.y = lerp(neckNode.rotation.y, (S.headRotY + nodY) * 0.4, dt * 3.5);
+        // Neck echoes head at ~40% amplitude for natural chain movement + gaze tracking
+        const gazeNeckX = -S.gazeCurrentY * 0.08;
+        const gazeNeckY = S.gazeCurrentX * 0.12;
+        neckNode.rotation.x = lerp(neckNode.rotation.x, (S.headRotX + speakX) * 0.40 + gazeNeckX, dt * 3.5);
+        neckNode.rotation.y = lerp(neckNode.rotation.y, (S.headRotY + speakY) * 0.40 + gazeNeckY, dt * 3.5);
+        neckNode.rotation.z = lerp(neckNode.rotation.z, speakZ * 0.30, dt * 3.5);
       }
 
-      // ── Layer 6: BLINKING (Irregular) ────────────────────────────────────
+      // ── Layer 6: BLINKING STATE MACHINE (Flutter-Free) ───────────────────
+      // Speaking increases blink rate naturally
+      const blinkRateMultiplier = S.isSpeaking ? 1.3 : 1.0;
       if (!S.isBlinking) {
-        S.blinkTimer -= dt;
-        if (S.blinkTimer <= 0) {
-          S.isBlinking = true; S.blinkProgress = 0;
-          // Randomize double blinks occasionally
-          S.blinkTimer = Math.random() < 0.2 ? 0.3 : rand(profile.blinkMin, profile.blinkMax);
+        if (S.doubleBlinkTimer > 0) {
+          // Count down double-blink delay with eyes open
+          S.doubleBlinkTimer -= dt;
+          if (S.doubleBlinkTimer <= 0) {
+            S.isBlinking = true;
+            S.blinkProgress = 0;
+            S.doubleBlink = false; // complete second blink trigger
+          }
+        } else {
+          S.blinkTimer -= dt * blinkRateMultiplier;
+          if (S.blinkTimer <= 0) {
+            S.isBlinking = true;
+            S.blinkProgress = 0;
+            // 15% chance to schedule a second blink (double-blink)
+            if (Math.random() < 0.15) {
+              S.doubleBlink = true;
+              S.doubleBlinkTimer = rand(0.16, 0.28);
+            }
+            S.blinkTimer = rand(profile.blinkMin, profile.blinkMax);
+          }
         }
       }
       if (S.isBlinking) {
-        S.blinkProgress += dt * 12; // slightly faster blink
-        if (S.blinkProgress >= 1) { S.blinkProgress = 0; S.isBlinking = false; }
+        S.blinkProgress += dt * 13; // blink speed
+        if (S.blinkProgress >= 1) {
+          S.isBlinking = false;
+          S.blinkProgress = 0;
+        }
       }
-      S.blinkWeight = lerp(S.blinkWeight, S.isBlinking ? Math.sin(S.blinkProgress * Math.PI) : 0, dt * 20);
-      safe(em, VRMExpressionPresetName.Blink, S.blinkWeight);
+      // Surprised emotion: eyes open wider (negative blink = widened eyes)
+      const isWidened = ['surprised', 'surprise', 'interestedFlash'].includes(S.currentEmotionKey);
+      const blinkTarget = S.isBlinking ? Math.sin(S.blinkProgress * Math.PI) : (isWidened ? -0.12 : 0);
+      S.blinkWeight = lerp(S.blinkWeight, blinkTarget, dt * 22);
+      safe(em, VRMExpressionPresetName.Blink, clamp(S.blinkWeight, 0, 1));
 
-      // ── Layer 7: GAZE (Dynamic wandering & Genuine Interest) ─────────────
+      // ── Layer 7: GAZE (Dynamic wandering + Speaking saccades) ────────────
+      // Idle gaze: wander naturally, look away occasionally, hold eye contact
       S.gazeTimer -= dt;
       if (S.gazeTimer <= 0) {
         if (S.isLookingAway) {
@@ -654,27 +798,62 @@ export default function AvatarCanvas({ audioPlayEvent, emotion = 'neutral', gest
            S.isLookingAway = false;
         } else {
            const isEngaged = ['interestedFlash', 'engaged', 'attentive', 'activeListening', 'eyeContact', 'comforting', 'casualChat'].includes(S.currentEmotionKey) || S.rapportCurrent > 0.65;
-           const lookAwayProb = isEngaged ? 0.08 : 0.35; // Hold eye contact longer if engaged
+           const lookAwayProb = isEngaged ? 0.08 : 0.35;
 
            if (Math.random() < lookAwayProb) {
-               // Occasionally look away (distracted / thinking)
                S.gazeTargetX = rand(-0.35, 0.35);
                S.gazeTargetY = rand(-0.15, 0.15);
-               S.gazeTimer = rand(profile.gazeMin * 0.3, profile.gazeMax * 0.3); // Look away briefly
+               S.gazeTimer = rand(profile.gazeMin * 0.3, profile.gazeMax * 0.3);
                S.isLookingAway = true;
            } else {
-               // Micro eye darts while looking at user
                S.gazeTargetX = rand(-0.05, 0.05);
                S.gazeTargetY = rand(-0.03, 0.03);
                S.gazeTimer = rand(profile.gazeMin * 0.5, profile.gazeMax * 0.5);
            }
         }
       }
-      S.gazeCurrentX = lerp(S.gazeCurrentX, S.gazeTargetX, dt * (S.isLookingAway ? 3.5 : 2.0));
-      S.gazeCurrentY = lerp(S.gazeCurrentY, S.gazeTargetY, dt * (S.isLookingAway ? 3.5 : 2.0));
+
+      // Speaking saccades — while talking, eyes make small rapid darts (very human!)
+      // Real speakers look slightly left/right while retrieving words from memory.
+      let speakGazeOffX = 0, speakGazeOffY = 0;
+      if (S.isSpeaking) {
+        S.speakGazeTimer -= dt;
+        if (S.speakGazeTimer <= 0) {
+          // Quick saccade: look slightly away then back — mimics word retrieval
+          const isThinking = ['thinking', 'thoughtfulness', 'attentive'].includes(S.currentEmotionKey);
+          S.speakGazeX = isThinking ? rand(-0.20, 0.20) : rand(-0.08, 0.08);
+          S.speakGazeY = isThinking ? rand(-0.10, 0.08) : rand(-0.05, 0.05);
+          S.speakGazeTimer = rand(0.3, 1.1);
+        }
+        speakGazeOffX = lerp(speakGazeOffX, S.speakGazeX, dt * 6.0);
+        speakGazeOffY = lerp(speakGazeOffY, S.speakGazeY, dt * 6.0);
+      } else {
+        S.speakGazeX = lerp(S.speakGazeX, 0, dt * 3.0);
+        S.speakGazeY = lerp(S.speakGazeY, 0, dt * 3.0);
+        speakGazeOffX = S.speakGazeX;
+        speakGazeOffY = S.speakGazeY;
+      }
+
+      S.gazeCurrentX = lerp(S.gazeCurrentX, S.gazeTargetX + speakGazeOffX, dt * (S.isLookingAway ? 4.0 : 2.0));
+      S.gazeCurrentY = lerp(S.gazeCurrentY, S.gazeTargetY + speakGazeOffY, dt * (S.isLookingAway ? 4.0 : 2.0));
       if (vrm.lookAt) {
         vrm.lookAt.yaw   = S.gazeCurrentX * 30;
         vrm.lookAt.pitch = S.gazeCurrentY * 20;
+      }
+
+      // Direct Eye Bone Rotation Fallback (Guarantees visible gaze shifts even if lookAt API is not working)
+      const leftEyeNode = getNode('leftEye');
+      const rightEyeNode = getNode('rightEye');
+      if (leftEyeNode && rightEyeNode) {
+        // Clamp eye rotation range to look natural (not too extreme/cross-eyed)
+        const eyeGazeX = clamp(S.gazeCurrentX, -0.22, 0.22);
+        const eyeGazeY = clamp(S.gazeCurrentY, -0.12, 0.12);
+        
+        leftEyeNode.rotation.y = lerp(leftEyeNode.rotation.y, eyeGazeX, dt * 8.0);
+        leftEyeNode.rotation.x = lerp(leftEyeNode.rotation.x, eyeGazeY, dt * 8.0);
+        
+        rightEyeNode.rotation.y = lerp(rightEyeNode.rotation.y, eyeGazeX, dt * 8.0);
+        rightEyeNode.rotation.x = lerp(rightEyeNode.rotation.x, eyeGazeY, dt * 8.0);
       }
 
       // ── Layer 8: EMOTION & MICRO-EXPRESSIONS ─────────────────────────────
@@ -694,6 +873,30 @@ export default function AvatarCanvas({ audioPlayEvent, emotion = 'neutral', gest
         if (!S.emotionPreset || S.currentEmotionKey === 'neutral') {
           safe(em, VRMExpressionPresetName.Relaxed, S.microWeight);
         }
+      }
+
+      // ── Layer 8.5: IDLE MICRO-FIDGET SYSTEM ──────────────────────────────
+      // Real humans standing still don't freeze — they occasionally shift weight,
+      // adjust clothing, touch hair etc. This adds random subtle idle micro-movements.
+      if (!S.isSpeaking) {
+        S.fidgetTimer -= dt;
+        if (S.fidgetTimer <= 0) {
+          S.isFidgeting = !S.isFidgeting;
+          if (S.isFidgeting) {
+            // Pick a random subtle fidget bone
+            const fidgetBones = ['rightLowerArm', 'leftLowerArm', 'rightHand', 'leftHand'];
+            S.fidgetBone = fidgetBones[Math.floor(Math.random() * fidgetBones.length)];
+            S.fidgetPhase = 0;
+            S.fidgetTimer = rand(1.5, 3.0);  // fidget lasts 1.5-3s
+          } else {
+            S.fidgetTimer = rand(5.0, 12.0); // next fidget in 5-12s
+          }
+        }
+        if (S.isFidgeting) S.fidgetPhase += dt;
+      } else {
+        // Reset fidget when speaking starts
+        S.isFidgeting = false;
+        S.fidgetTimer = rand(6.0, 14.0);
       }
 
       // ── Layer 9: HAND GESTURES (Smoothness Engine) ─────────────────────
@@ -922,6 +1125,16 @@ export default function AvatarCanvas({ audioPlayEvent, emotion = 'neutral', gest
           tx += Math.sin(t * 0.75) * 0.015;
         }
 
+        // ── Idle micro-fidget overlay (only when not speaking, on specific bone) ──
+        if (!S.isSpeaking && S.isFidgeting && boneName === S.fidgetBone) {
+          const fp = S.fidgetPhase;
+          // Gentle, non-repeating micro-movement (dampened sine)
+          const dampening = Math.max(0, 1.0 - fp * 0.6); // fades out
+          tx += Math.sin(fp * 3.2) * 0.025 * dampening;
+          ty += Math.sin(fp * 2.1 + 0.8) * 0.018 * dampening;
+          tz += Math.sin(fp * 4.0 + 1.5) * 0.015 * dampening;
+        }
+
         // ── Universal: voice-reactive amplitude boost ─────────────────────
         if (S.isSpeaking) {
           tx += (tx > 0 ? volBoost * 0.04 : -volBoost * 0.04);
@@ -954,34 +1167,12 @@ export default function AvatarCanvas({ audioPlayEvent, emotion = 'neutral', gest
         }
       }
 
-      // ── Layer 11: CAMERA ZOOM ──────────────────────────────────────────────
-      if (cameraRef.current) {
-        S.zoomCurrent = lerp(S.zoomCurrent, S.zoomTarget, dt * 3.0);
-        const normalizedZoom = S.zoomCurrent / 100.0;
-        
-        const headY = S.avatarHeadY;
-        const fullHeight = S.avatarHeight;
-        const centerY = S.avatarCenterY;
-
-        // Close-up framing (face)
-        const closeUpY = headY;
-        const closeUpZ = 0.7;
-        const closeUpLookY = headY; // Look straight at the head
-
-        // Full-body framing
-        const fullBodyY = centerY - (fullHeight * 0.15); 
-        const fullBodyZ = fullHeight * 2.3; 
-        const fullBodyLookY = centerY; 
-
-        const targetY = lerp(closeUpY, fullBodyY, normalizedZoom);
-        const targetZ = lerp(closeUpZ, fullBodyZ, normalizedZoom);
-        const lookY = lerp(closeUpLookY, fullBodyLookY, normalizedZoom);
-
-        cameraRef.current.position.set(0, targetY, targetZ);
-        cameraRef.current.lookAt(0, lookY, 0);
+      // ── Layer 11: CAMERA ZOOM (OrbitControls Update) ──────────────────────
+      if (controlsRef.current) {
+        controlsRef.current.update();
       }
 
-      // ── Layer 12: BACKGROUND DEPTH & PARALLAX ──────────────────────────────
+      // ── Layer 12: BACKGROUND DEPTH & PARALLAX (Billboard Alignment) ────────
       if (S.bgGroup) {
         if (S.oldBgMat && S.newBgMat) {
           S.bgFadeProgress += dt * 2.4; // ~420ms fade
@@ -1004,13 +1195,12 @@ export default function AvatarCanvas({ audioPlayEvent, emotion = 'neutral', gest
           prevBgTextureRef.current = currentBgTextureRef.current;
         }
 
-        // Parallax depth effect: the far plane follows camera motion at a slower rate.
+        // Parallax depth effect: the far plane follows camera motion, staying perpendicular (billboard)
         if (cameraRef.current) {
-          const camYOffset = cameraRef.current.position.y - 1.45;
-          const zoomDepthOffset = (S.zoomCurrent - 50) / 100;
-          S.bgGroup.position.y = 1.45 + (camYOffset * 0.15);
-          S.bgGroup.position.z = -10 - zoomDepthOffset * 0.55;
-          S.bgGroup.position.x = -S.headRotY * 1.5;
+          const target = controlsRef.current ? controlsRef.current.target : new THREE.Vector3(0, 1.35, 0);
+          const dir = new THREE.Vector3().copy(cameraRef.current.position).sub(target).normalize();
+          S.bgGroup.position.copy(target).addScaledVector(dir, -10.0);
+          S.bgGroup.quaternion.copy(cameraRef.current.quaternion);
         }
       }
 
@@ -1033,6 +1223,11 @@ export default function AvatarCanvas({ audioPlayEvent, emotion = 'neutral', gest
       alive = false;
       cancelAnimationFrame(rafId);
       window.removeEventListener('resize', onResize);
+      // Dispose OrbitControls
+      if (controlsRef.current) {
+        controlsRef.current.dispose();
+        controlsRef.current = null;
+      }
       // Remove old VRM from scene when avatar changes
       if (vrmRef.current) {
         sceneRef.current?.remove(vrmRef.current.scene);
@@ -1174,9 +1369,26 @@ export default function AvatarCanvas({ audioPlayEvent, emotion = 'neutral', gest
   }, [gestureOverride]);
 
 
-  // Zoom update
+  // Zoom update driven by React prop slider
   useEffect(() => {
     S.zoomTarget = zoomLevel;
+    if (controlsRef.current) {
+      const controls = controlsRef.current;
+      const normalizedZoom = zoomLevel / 100.0;
+      
+      const headY = S.avatarHeadY || 1.45;
+      const centerY = S.avatarCenterY || 0.8;
+      const fullHeight = S.avatarHeight || 1.6;
+
+      const targetY = lerp(headY, centerY, normalizedZoom);
+      const targetDistance = lerp(0.7, fullHeight * 2.3, normalizedZoom);
+
+      controls.target.set(0, targetY, 0);
+      
+      const dir = new THREE.Vector3().copy(controls.object.position).sub(controls.target).normalize();
+      controls.object.position.copy(controls.target).addScaledVector(dir, targetDistance);
+      controls.update();
+    }
   }, [zoomLevel]);
 
   // Lip sync trigger
