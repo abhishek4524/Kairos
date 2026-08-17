@@ -308,12 +308,22 @@ export function useAudioStreaming({
     }
   };
 
+  const updateVadSensitivity = (sensitivity) => {
+    if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+      wsRef.current.send(JSON.stringify({
+        type: 'config_update',
+        vad_sensitivity: sensitivity,
+      }));
+    }
+  };
+
   return {
     isRecording,
     startRecording,
     stopRecording,
     sendTextInput,
     stopAndClearAudio,
-    triggerIntro
+    triggerIntro,
+    updateVadSensitivity,
   };
 }

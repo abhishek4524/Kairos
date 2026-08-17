@@ -7,4 +7,6 @@ export default defineConfig({
     react(),
     tailwindcss(),
   ],
+  // Required for Electron: makes all asset paths relative (file:// compatible)
+  base: './',
 })

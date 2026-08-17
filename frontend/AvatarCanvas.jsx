@@ -3,6 +3,7 @@ import * as THREE from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader';
 import { VRMLoaderPlugin, VRMExpressionPresetName } from '@pixiv/three-vrm';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls';
+import { RoomEnvironment } from './components/avatar/RoomEnvironment';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Utilities
@@ -79,12 +80,48 @@ const EMOTION_PRESET = {
 const EMOTION_WEIGHT_MAX = 0.65;
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Expanded emotion → raw morph target blends (layered on top of VRM presets)
+// These drive Fcl_* morphs directly on the face SkinnedMesh for nuanced looks.
+// Mouth/jaw morphs are zeroed during active lip-sync to protect viseme priority.
+// ─────────────────────────────────────────────────────────────────────────────
+const EMOTION_MORPH_LAYERS = {
+  happy:           [{ m:'Fcl_EYE_Joy',   w:0.55 }, { m:'Fcl_MTH_Fun',  w:0.30 }, { m:'Fcl_BRW_Joy',       w:0.40 }],
+  greeting:        [{ m:'Fcl_EYE_Joy',   w:0.60 }, { m:'Fcl_MTH_Fun',  w:0.40 }, { m:'Fcl_BRW_Joy',       w:0.50 }],
+  approval:        [{ m:'Fcl_EYE_Joy',   w:0.45 }, { m:'Fcl_MTH_Fun',  w:0.25 }, { m:'Fcl_BRW_Joy',       w:0.35 }],
+  comforting:      [{ m:'Fcl_EYE_Natural',w:0.40}, { m:'Fcl_BRW_Sorrow',w:0.25}, { m:'Fcl_MTH_Neutral',   w:0.20 }],
+  sad:             [{ m:'Fcl_ALL_Sorrow', w:0.50 }, { m:'Fcl_EYE_Sorrow',w:0.35}, { m:'Fcl_BRW_Sorrow',   w:0.45 }],
+  thinking:        [{ m:'Fcl_EYE_Natural',w:0.50}, { m:'Fcl_BRW_Fun',   w:0.20 }],
+  thoughtfulness:  [{ m:'Fcl_EYE_Natural',w:0.45}, { m:'Fcl_BRW_Fun',   w:0.15 }],
+  attentive:       [{ m:'Fcl_EYE_Natural',w:0.55}, { m:'Fcl_BRW_Fun',   w:0.15 }],
+  focused:         [{ m:'Fcl_EYE_Natural',w:0.60}, { m:'Fcl_MTH_Neutral',w:0.30}],
+  curious:         [{ m:'Fcl_BRW_Surprised',w:0.40}, { m:'Fcl_EYE_Spread',w:0.25}, { m:'Fcl_EYE_Natural', w:0.30 }],
+  interestedFlash: [{ m:'Fcl_BRW_Surprised',w:0.55}, { m:'Fcl_EYE_Spread',w:0.35}],
+  surprised:       [{ m:'Fcl_ALL_Surprised',w:0.65}, { m:'Fcl_EYE_Surprised',w:0.55}],
+  surprise:        [{ m:'Fcl_ALL_Surprised',w:0.60}, { m:'Fcl_EYE_Surprised',w:0.50}],
+  anger:           [{ m:'Fcl_ALL_Angry',  w:0.55 }, { m:'Fcl_EYE_Angry', w:0.45 }, { m:'Fcl_BRW_Angry',   w:0.50 }],
+  annoyed:         [{ m:'Fcl_EYE_Angry',  w:0.35 }, { m:'Fcl_BRW_Angry', w:0.30 }, { m:'Fcl_MTH_Angry',   w:0.20 }],
+  displeasure:     [{ m:'Fcl_EYE_Angry',  w:0.30 }, { m:'Fcl_BRW_Angry', w:0.25 }],
+  disagreement:    [{ m:'Fcl_BRW_Angry',  w:0.40 }, { m:'Fcl_EYE_Angry', w:0.30 }],
+  blushing:        [{ m:'Fcl_EYE_Joy_L',  w:0.30 }, { m:'Fcl_EYE_Joy_R', w:0.30 }, { m:'Fcl_BRW_Joy',     w:0.25 }],
+  coySmile:        [{ m:'Fcl_EYE_Joy_L',  w:0.40 }, { m:'Fcl_EYE_Joy_R', w:0.40 }, { m:'Fcl_MTH_Fun',     w:0.30 }],
+  jollyLaughter:   [{ m:'Fcl_ALL_Joy',    w:0.70 }, { m:'Fcl_EYE_Joy',   w:0.60 }, { m:'Fcl_MTH_Large',   w:0.50 }],
+  relaxed:         [{ m:'Fcl_EYE_Natural',w:0.30}, { m:'Fcl_MTH_Neutral',w:0.15}],
+  casualChat:      [{ m:'Fcl_EYE_Natural',w:0.25}],
+  neutral:         [],
+};
+const EMOTION_MORPH_MAX = 0.42; // Cap below lip-sync weight so visemes always win
+
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Hand Gesture Pose Library
 // ─────────────────────────────────────────────────────────────────────────────
 const GESTURES = {
   // ── Core / neutral ────────────────────────────────────────────────────────────
   // Natural relaxed standing — arms hang naturally at sides, slight bend at elbow
   neutral:         { leftUpperArm: { x:0.08, y:0.00, z:-1.20 }, rightUpperArm: { x:0.08, y:0.00, z: 1.20 }, leftLowerArm: { x:0.10, y:0.00, z:-0.08 }, rightLowerArm: { x:0.10, y:0.00, z: 0.08 }, leftHand: { x:0.00, y: 0.05, z:-0.02 }, rightHand: { x:0.00, y:-0.05, z: 0.02 } },
+  seated_neutral:  { leftUpperArm: { x:0.35, y: 0.12, z:-0.65 }, rightUpperArm: { x:0.35, y:-0.12, z: 0.65 }, leftLowerArm: { x:-0.60, y: 0.10, z: 0.05 }, rightLowerArm: { x:-0.60, y:-0.10, z:-0.05 }, leftHand: { x:0.00, y: 0.05, z:-0.02 }, rightHand: { x:0.00, y:-0.05, z: 0.02 } },
+  reading_book:    { leftUpperArm: { x:0.35, y: 0.20, z:-0.55 }, rightUpperArm: { x:0.35, y:-0.20, z: 0.55 }, leftLowerArm: { x:-0.90, y: 0.25, z: 0.15 }, rightLowerArm: { x:-0.90, y:-0.25, z:-0.15 }, leftHand: { x:0.10, y: 0.15, z: 0.10 }, rightHand: { x:0.10, y:-0.15, z:-0.10 } },
+  jump_air:        { leftUpperArm: { x:-0.40, y: 0.10, z:-0.50 }, rightUpperArm: { x:-0.40, y:-0.10, z: 0.50 }, leftLowerArm: { x:-0.50, y: 0.10, z: 0.10 }, rightLowerArm: { x:-0.50, y:-0.10, z:-0.10 }, leftHand: { x:0.00, y: 0.00, z: 0.00 }, rightHand: { x:0.00, y: 0.00, z: 0.00 } },
   
   // ── Greeting Gestures ────────────────────────────────────────────────────────
   namaste:         { leftUpperArm: { x:0.10, y: 0.20, z:-0.60 }, rightUpperArm: { x:0.10, y:-0.20, z: 0.60 }, leftLowerArm: { x:-1.00, y:-0.10, z: 0.10 }, rightLowerArm: { x:-1.00, y: 0.10, z:-0.10 }, leftHand: { x:0.10, y: 0.10, z: 0.10 }, rightHand: { x:0.10, y:-0.10, z:-0.10 } },
@@ -115,6 +152,7 @@ const GESTURES = {
   eye_roll:        { leftUpperArm: { x:0.10, y:0.00, z:-1.15 }, rightUpperArm: { x: 0.10, y:-0.10, z:-0.60 }, leftLowerArm: { x:0.18, y:0.00, z:-0.12 }, rightLowerArm: { x:-1.10, y: 0.10, z: 0.00 }, leftHand: { x:0.00, y: 0.10, z: 0.00 }, rightHand: { x:0.10, y:-0.10, z: 0.10 } },
   clapping:        { leftUpperArm: { x:0.30, y: 0.20, z:-0.50 }, rightUpperArm: { x:0.30, y:-0.20, z: 0.50 }, leftLowerArm: { x:-0.80, y:-0.10, z: 0.10 }, rightLowerArm: { x:-0.80, y: 0.10, z:-0.10 }, leftHand: { x:-0.10, y: 0.10, z: 0.10 }, rightHand: { x:-0.10, y:-0.10, z:-0.10 } },
   fist_pump:       { leftUpperArm: { x:0.10, y:0.00, z:-1.15 }, rightUpperArm: { x:-0.50, y:-0.10, z:-0.40 }, leftLowerArm: { x:0.18, y:0.00, z:-0.12 }, rightLowerArm: { x:-0.50, y: 0.10, z:-0.10 }, leftHand: { x:0.00, y: 0.10, z: 0.00 }, rightHand: { x:0.10, y:-0.10, z: 0.00 } },
+  thumbs_up:       { leftUpperArm: { x:0.10, y:0.00, z:-1.15 }, rightUpperArm: { x:-0.10, y:-0.08, z: 0.30 }, leftLowerArm: { x:0.18, y:0.00, z:-0.12 }, rightLowerArm: { x:-0.70, y: 0.10, z:-0.08 }, leftHand: { x:0.00, y: 0.10, z: 0.00 }, rightHand: { x: 0.10, y:-0.10, z:-0.10 } },
   
   // ── Listening / Reactive ────────────────────────────────────────────────────
   nodding:         { leftUpperArm: { x:0.10, y:0.00, z:-1.15 }, rightUpperArm: { x:0.10, y:0.00, z: 1.15 }, leftLowerArm: { x:0.18, y:0.00, z:-0.12 }, rightLowerArm: { x:0.18, y:0.00, z: 0.12 }, leftHand: { x:0.00, y: 0.10, z: 0.00 }, rightHand: { x:0.00, y:-0.10, z: 0.00 } },
@@ -138,74 +176,71 @@ const GESTURES = {
   goodbye:         { leftUpperArm: { x:0.10, y:0.00, z:-1.15 }, rightUpperArm: { x:-0.40, y:-0.15, z:-0.30 }, leftLowerArm: { x:0.18, y:0.00, z:-0.12 }, rightLowerArm: { x:-0.90, y:0.00, z: 0.00 }, leftHand: { x:0.00, y: 0.10, z: 0.00 }, rightHand: { x:0.00, y:-0.20, z: 0.00 } },
 };
 
-const DEFAULT_EMOTIONS = {
-  '/avatar.vrm': 'comforting',
-  '/avatar1.vrm': 'casualChat',
-  '/avatar2.vrm': 'explaining',
-  '/avatar3.vrm': 'jollyLaughter',
-  '/avatar4.vrm': 'attentive',
-  '/avatar5.vrm': 'happy',
-  '/avatar6.vrm': 'relaxed',
+// ─────────────────────────────────────────────────────────────────────────────
+// Finger Pose Library — curl values [proximalZ, intermediateZ, distalZ]
+// Applied via VRM humanoid finger bones on top of wrist pose
+// ─────────────────────────────────────────────────────────────────────────────
+const FINGER_POSES = {
+  open:     { index:[0.00,0.00,0.00], middle:[0.00,0.00,0.00], ring:[0.00,0.00,0.00], little:[0.00,0.00,0.00], thumb:[-0.05,0.00,0.00] },
+  relaxed:  { index:[0.12,0.18,0.12], middle:[0.14,0.20,0.14], ring:[0.15,0.22,0.15], little:[0.16,0.24,0.16], thumb:[ 0.10,0.12,0.08] },
+  flat:     { index:[0.06,0.08,0.06], middle:[0.06,0.08,0.06], ring:[0.06,0.08,0.06], little:[0.08,0.10,0.08], thumb:[ 0.15,0.10,0.06] },
+  fist:     { index:[1.20,1.40,1.00], middle:[1.20,1.40,1.00], ring:[1.20,1.40,1.00], little:[1.20,1.40,1.00], thumb:[ 0.50,0.60,0.40] },
+  pointing: { index:[0.00,0.00,0.00], middle:[1.20,1.40,1.00], ring:[1.20,1.40,1.00], little:[1.20,1.40,1.00], thumb:[ 0.40,0.50,0.30] },
+  thumbsUp: { index:[1.20,1.40,1.00], middle:[1.20,1.40,1.00], ring:[1.20,1.40,1.00], little:[1.20,1.40,1.00], thumb:[-0.10,0.00,0.00] },
+  peace:    { index:[0.00,0.00,0.00], middle:[0.00,0.00,0.00], ring:[1.20,1.40,1.00], little:[1.20,1.40,1.00], thumb:[ 0.40,0.50,0.30] },
+  chin_cup: { index:[0.50,0.60,0.40], middle:[0.50,0.60,0.40], ring:[0.55,0.65,0.45], little:[0.55,0.65,0.45], thumb:[ 0.20,0.25,0.15] },
 };
 
-const CHARACTER_SIGNATURES = {
-  '/avatar.vrm':  { greeting: 'namaste', happy: 'kavya_open', comforting: 'kavya_open' },
-  '/avatar1.vrm': { casualChat: 'shriya_sarcastic', annoyed: 'eye_roll', disapproval: 'shriya_smirk' },
-  '/avatar2.vrm': { explaining: 'kumar_glasses', presentation: 'kumar_glasses' },
-  '/avatar3.vrm': { jollyLaughter: 'lucy_spin', happy: 'lucy_spin', surprise: 'excited_jump', greeting: 'salute' },
-  '/avatar4.vrm': { attentive: 'sara_gentle', relaxed: 'sara_gentle', comforting: 'sara_gentle' },
-  '/avatar5.vrm': { happy: 'bouncy_hop', surprise: 'aanya_point', greeting: 'bouncy_hop' },
-  '/avatar6.vrm': { relaxed: 'chill_lean', casualChat: 'chill_lean', greeting: 'peace', flirt: 'wink_gun' },
+// Maps [gestureName] → [rightHandPose, leftHandPose]
+const GESTURE_FINGER_POSE = {
+  neutral:       ['relaxed', 'relaxed'],
+  seated_neutral:['relaxed', 'relaxed'],
+  reading_book:  ['flat', 'flat'],
+  jump_air:      ['open', 'open'],
+  namaste:       ['flat', 'flat'],
+  wave:          ['open', 'relaxed'],
+  goodbye:       ['open', 'relaxed'],
+  salute:        ['flat', 'relaxed'],
+  peace:         ['peace', 'relaxed'],
+  explaining:    ['flat', 'flat'],
+  palm_up:       ['flat', 'flat'],
+  palm_down:     ['flat', 'flat'],
+  point_up:      ['pointing', 'relaxed'],
+  aanya_point:   ['pointing', 'relaxed'],
+  fist_pump:     ['fist', 'relaxed'],
+  thumbs_up:     ['thumbsUp', 'relaxed'],
+  thinking:      ['chin_cup', 'relaxed'],
+  chin_rub:      ['chin_cup', 'relaxed'],
+  clapping:      ['flat', 'flat'],
+  heart_hands:   ['flat', 'flat'],
+  arms_crossed:  ['relaxed', 'relaxed'],
 };
 
-const CHARACTER_PROFILES = {
-  '/avatar.vrm': { breathRate: 1.0, swayRate: 1.0, swayAmp: 1.0, blinkMin: 2.0, blinkMax: 5.0, gazeMin: 2.0, gazeMax: 5.0 }, // Kavya
-  '/avatar1.vrm':{ breathRate: 0.9, swayRate: 0.9, swayAmp: 0.8, blinkMin: 1.5, blinkMax: 4.0, gazeMin: 1.5, gazeMax: 4.0 }, // Shriya
-  '/avatar2.vrm':{ breathRate: 0.7, swayRate: 0.6, swayAmp: 0.5, blinkMin: 3.0, blinkMax: 6.0, gazeMin: 3.0, gazeMax: 6.0 }, // Kumar
-  '/avatar3.vrm':{ breathRate: 1.8, swayRate: 2.2, swayAmp: 1.8, blinkMin: 1.0, blinkMax: 3.0, gazeMin: 1.0, gazeMax: 3.0 }, // Lucy
-  '/avatar4.vrm':{ breathRate: 0.5, swayRate: 0.4, swayAmp: 0.4, blinkMin: 4.0, blinkMax: 8.0, gazeMin: 4.0, gazeMax: 8.0 }, // Sara
-  '/avatar5.vrm':{ breathRate: 1.4, swayRate: 1.6, swayAmp: 1.5, blinkMin: 1.5, blinkMax: 3.5, gazeMin: 1.0, gazeMax: 3.0 }, // Aanya
-  '/avatar6.vrm':{ breathRate: 0.7, swayRate: 0.6, swayAmp: 0.7, blinkMin: 3.0, blinkMax: 7.0, gazeMin: 3.0, gazeMax: 6.0 }, // Ankur
+// Humanoid VRM bone names for each finger, [L, R], [Proximal, Intermediate, Distal]
+const FINGER_JOINTS = {
+  index:  { L: ['leftIndexProximal','leftIndexIntermediate','leftIndexDistal'],
+             R: ['rightIndexProximal','rightIndexIntermediate','rightIndexDistal'] },
+  middle: { L: ['leftMiddleProximal','leftMiddleIntermediate','leftMiddleDistal'],
+             R: ['rightMiddleProximal','rightMiddleIntermediate','rightMiddleDistal'] },
+  ring:   { L: ['leftRingProximal','leftRingIntermediate','leftRingDistal'],
+             R: ['rightRingProximal','rightRingIntermediate','rightRingDistal'] },
+  little: { L: ['leftLittleProximal','leftLittleIntermediate','leftLittleDistal'],
+             R: ['rightLittleProximal','rightLittleIntermediate','rightLittleDistal'] },
+  thumb:  { L: ['leftThumbMetacarpal','leftThumbProximal','leftThumbDistal'],
+             R: ['rightThumbMetacarpal','rightThumbProximal','rightThumbDistal'] },
 };
 
-const AVATAR_NAMES = {
-  '/avatar.vrm': 'kavya',
-  '/avatar1.vrm': 'shriya',
-  '/avatar2.vrm': 'kumar',
-  '/avatar3.vrm': 'lucy',
-  '/avatar4.vrm': 'sara',
-  '/avatar5.vrm': 'aanya',
-  '/avatar6.vrm': 'ankur',
-};
 
-const BACKGROUND_FALLBACKS = {
-  kavya: ['jpg', 'png'],
-  shriya: ['jpg', 'png'],
-  kumar: ['jpg', 'png'],
-  lucy: ['jpg', 'png'],
-  sara: ['jpg', 'png'],
-  aanya: ['jpg', 'png'],
-  ankur: ['jpg', 'png'],
-};
 
-const BACKGROUND_LIGHTING = {
-  kavya:  { keyDark: 0xffd0a0, keyLight: 0xffe8c0, fillDark: 0x8a7060, fillLight: 0xd8c5b2 },
-  shriya: { keyDark: 0xd7c4ff, keyLight: 0xf0dcff, fillDark: 0x66527f, fillLight: 0xcab4e8 },
-  kumar:  { keyDark: 0xc8e7d9, keyLight: 0xe1fff1, fillDark: 0x536f63, fillLight: 0xb9dacb },
-  lucy:   { keyDark: 0xffb8c8, keyLight: 0xffdbe3, fillDark: 0x8a5363, fillLight: 0xe7adbb },
-  sara:   { keyDark: 0xbfd9ff, keyLight: 0xe7f1ff, fillDark: 0x506987, fillLight: 0xb8d3ef },
-  aanya:  { keyDark: 0xffdda2, keyLight: 0xffedc7, fillDark: 0x8a7450, fillLight: 0xe4cc9c },
-  ankur:  { keyDark: 0xffc69a, keyLight: 0xffe4c2, fillDark: 0x8a6450, fillLight: 0xddb49b },
-};
 
-const getBackgroundCandidates = (avatarUrl, theme) => {
-  const avatarName = AVATAR_NAMES[avatarUrl] || 'kavya';
+const getBackgroundCandidates = (theme) => {
   const mode = theme === 'dark' ? 'dark' : 'light';
-  const exts = BACKGROUND_FALLBACKS[avatarName] || ['jpg', 'png'];
+  // Use relative paths — critical for Electron (file:// protocol doesn't support absolute /paths)
   return [
-    ...exts.map(ext => `/backgrounds/${avatarName}_${mode}.${ext}`),
-    `/bg_${avatarName}_${mode}.png`,
-    `/bg_${avatarName}_${mode}.jpg`,
+    `./backgrounds/kavya_${mode}.jpg`,
+    `./backgrounds/kavya_${mode}.png`,
+    `./bg_kavya_${mode}.png`,
+    `./bg_kavya_${mode}.jpg`,
   ];
 };
 
@@ -215,23 +250,19 @@ const GESTURE_BONES = [
   'leftHand',     'rightHand',
 ];
 
-const selectGesture = (isSpeaking, emotionKey, override, avatarUrl, time, rapportEnergy = 0) => {
+const selectGesture = (isSpeaking, emotionKey, override, time, rapportEnergy = 0, isSeated = false, isReading = false, isJumping = false) => {
   if (override) return override;
   
-  const baseEmotion = isSpeaking ? emotionKey : (DEFAULT_EMOTIONS[avatarUrl] || 'neutral');
+  const baseEmotion = isSpeaking ? emotionKey : 'comforting';
   
-  // Allan Pease Book Enhancements: Map core states to micro-gestures dynamically
   if (isSpeaking) {
     const isHonestOpen = ['openness', 'comforting', 'casualChat', 'friendlyContact'].includes(baseEmotion);
     const isAuthoritative = ['leadership', 'confidentSpeech', 'explaining'].includes(baseEmotion);
     const isEvaluating = ['thinking', 'thoughtfulness', 'attentive'].includes(baseEmotion);
 
-    // Seed pseudo-randomness with time to dynamically inject micro-gestures
     const p = Math.sin(time * 0.5); 
-    
     if (isEvaluating && p > 0.78) return 'chin_rub';
     if (isEvaluating && p < -0.78) return 'thinking';
-    
     if (isHonestOpen && p > 0.52) return 'palm_up';
     if (isAuthoritative && p > 0.62) return 'palm_down';
   } else if (rapportEnergy > 0.68) {
@@ -240,48 +271,70 @@ const selectGesture = (isSpeaking, emotionKey, override, avatarUrl, time, rappor
     if (p < -0.88) return 'openPosture';
   }
 
-  // Intercept with character-specific signature if it exists
-  const charSigs = CHARACTER_SIGNATURES[avatarUrl];
-  if (charSigs && charSigs[baseEmotion]) {
+  if (isJumping) {
+    return 'jump_air';
+  }
+  if (isReading && !isSpeaking) {
+    return 'reading_book';
+  }
+  if (isSeated && !isSpeaking) {
+    return 'seated_neutral';
+  }
+
+  const charSigs = { greeting: 'namaste', happy: 'kavya_open', comforting: 'kavya_open' };
+  if (charSigs[baseEmotion]) {
     return charSigs[baseEmotion];
   }
   
   return GESTURES[baseEmotion] ? baseEmotion : 'neutral';
 };
 
-const loadVRM = (url, scene, S, onLoaded) => {
-  const loader = new GLTFLoader();
-  loader.register((parser) => new VRMLoaderPlugin(parser));
-  loader.load(url, (gltf) => {
-    const vrm = gltf.userData.vrm;
-    if (!vrm) { console.error('[VRM] No VRM data.'); return; }
-    scene.add(vrm.scene);
-    vrm.scene.rotation.y = 0;
-    const hum = vrm.humanoid;
-    vrm.scene.updateMatrixWorld(true);
-    const box = new THREE.Box3().setFromObject(vrm.scene);
-    const height = box.max.y - box.min.y;
-    let headY = height * 0.85;
-    if (hum) {
-      const headNode = hum.getNormalizedBoneNode('head');
-      if (headNode) {
-        const headPos = new THREE.Vector3();
-        headNode.getWorldPosition(headPos);
-        headY = headPos.y;
-      }
-    }
-    S.avatarHeight  = height;
-    S.avatarHeadY   = headY;
-    S.avatarCenterY = (box.max.y + box.min.y) / 2;
-    console.log(`%c[VRM] Calibration: Height=${height.toFixed(2)}m, HeadY=${headY.toFixed(2)}m`, 'color:#a78bfa;font-weight:bold');
-    if (vrm.expressionManager) {
-      console.log('%c[VRM] ✅ Expressions:', 'color:#44ff88;font-weight:bold', Object.keys(vrm.expressionManager.expressionMap ?? {}));
-    }
-    onLoaded(vrm);
-  }, undefined, (err) => console.error('[VRM] Load error:', err));
-};
 
-export default function AvatarCanvas({ audioPlayEvent, emotion = 'neutral', gestureOverride = null, avatarUrl = '/avatar.vrm', theme = 'light', zoomLevel = 50, userRapportEnergy = 0.35 }) {
+// ─────────────────────────────────────────────────────────────────────────────
+// GesturePlayer — transient gesture overlay with fade-in / hold / fade-out
+// Layers a short gesture clip on top of the base pose without replacing it.
+// ─────────────────────────────────────────────────────────────────────────────
+class GesturePlayer {
+  constructor() {
+    this._current = null;
+    this.weight   = 0;
+    this.name     = null;
+  }
+
+  play(name, opts = {}) {
+    const fadeIn  = opts.fadeIn  ?? 0.25;
+    const hold    = opts.hold    ?? 1.00;
+    const fadeOut = opts.fadeOut ?? 0.40;
+    this._current = { name, elapsed: 0, fadeIn, hold, fadeOut, total: fadeIn + hold + fadeOut };
+    this.name   = name;
+    this.weight = 0;
+  }
+
+  update(dt) {
+    if (!this._current) { this.weight = 0; return; }
+    this._current.elapsed += dt;
+    const { elapsed, fadeIn, hold, fadeOut, total } = this._current;
+    if      (elapsed < fadeIn)          this.weight = elapsed / fadeIn;
+    else if (elapsed < fadeIn + hold)   this.weight = 1.0;
+    else if (elapsed < total)           this.weight = 1.0 - (elapsed - fadeIn - hold) / fadeOut;
+    else { this.weight = 0; this.name = null; this._current = null; }
+  }
+
+  get isActive() { return !!this._current; }
+  get overlay()  { return this._current ? { name: this.name, weight: this.weight } : null; }
+}
+
+export default function AvatarCanvas({ 
+  audioPlayEvent, 
+  emotion = 'neutral', 
+  gestureOverride = null, 
+  theme = 'light', 
+  zoomLevel = 50, 
+  userRapportEnergy = 0.35,
+  lampOn = true,
+  interactionPose = 'standing',
+  transientGesture = null
+}) {
   const canvasRef = useRef(null);
   const vrmRef    = useRef(null);
   const sceneRef  = useRef(null);
@@ -365,14 +418,33 @@ export default function AvatarCanvas({ audioPlayEvent, emotion = 'neutral', gest
     bgFadeProgress: 1,
     createBackgroundMaterial: null,
 
+    room: null,
     keyLight: null,
     fillLight: null,
-    rimLight: null,
+    goldRimLight: null,
+    cyanRimLight: null,
+    bounceLight: null,
     ambientLight: null,
 
     rapportTarget: 0.35,
     rapportCurrent: 0.35,
     organicNoiseSeed: rand(0, Math.PI * 2),
+
+    // ── Locomotion & Interaction State ─────────────────────────────────────
+    gesturePlayer: new GesturePlayer(),
+    faceMesh: null,
+    fingerLerpSpeed: 6.0,
+    interactionMode: 'standing', // 'standing', 'walking_to_chair', 'sitting_down', 'seated', 'standing_up', 'walking_to_center', 'walking_to_bookshelf', 'reading_book', 'putting_book_down'
+    isJumping: false,
+    jumpPhase: 0,
+    returnFromX: 0,
+    returnFromZ: 0,
+    interactionProgress: 0,
+    walkPhase: 0,
+    vrmPosX: 0,
+    vrmPosY: 0,
+    vrmPosZ: 0,
+    vrmRotY: 0,
   }).current;
 
   // ─────────────────────────────────── Scene Setup & Master Loop ────────────
@@ -384,12 +456,18 @@ export default function AvatarCanvas({ audioPlayEvent, emotion = 'neutral', gest
 
     const scene = new THREE.Scene();
     sceneRef.current = scene;
-    scene.background = new THREE.Color(0x000000); // Base dark void
+    scene.background = new THREE.Color(theme === 'dark' ? 0x080a12 : 0xf7f2ea);
+
+    // ── Stylized 3D Room Environment (Desk, Chair, Bookshelf, Interactive Lamp) ──
+    const room = new RoomEnvironment(scene, theme === 'dark');
+    room.setLampState(lampOn);
+    S.room = room;
 
     const getW = () => canvasRef.current?.parentElement?.offsetWidth  ?? window.innerWidth;
     const getH = () => canvasRef.current?.parentElement?.offsetHeight ?? window.innerHeight;
 
-    const camera = new THREE.PerspectiveCamera(28, getW() / getH(), 0.1, 25);
+    // 0.05 near plane prevents close-up facial clipping (eyelashes/nose)
+    const camera = new THREE.PerspectiveCamera(28, getW() / getH(), 0.05, 35);
     cameraRef.current = camera;
     camera.position.set(0, 1.45, 1.75);
     camera.lookAt(0, 1.35, 0);
@@ -397,37 +475,45 @@ export default function AvatarCanvas({ audioPlayEvent, emotion = 'neutral', gest
     // Reuse existing renderer if canvas is the same, else create new
     let renderer = rendererRef.current;
     if (!renderer || renderer.domElement !== canvasRef.current) {
-      renderer = new THREE.WebGLRenderer({ canvas: canvasRef.current, antialias: true, alpha: false });
+      renderer = new THREE.WebGLRenderer({ 
+        canvas: canvasRef.current, 
+        antialias: true, 
+        alpha: false,
+        powerPreference: 'high-performance'
+      });
       rendererRef.current = renderer;
     }
 
-    // OrbitControls setup for full 3D viewport control
+    // OrbitControls setup with damping and boundary limits
     const controls = new OrbitControls(camera, renderer.domElement);
     controls.enableDamping = true;
-    controls.dampingFactor = 0.05;
-    controls.minDistance = 0.3; // Allow close zoom-in on face
-    controls.maxDistance = 10.0; // Don't zoom out too far
-    controls.enablePan = true;  // Allow panning (right click drag / multi-finger swipe)
+    controls.dampingFactor = 0.06;
+    controls.minDistance = 0.35; // Safe close-up limit without clipping head mesh
+    controls.maxDistance = 6.0;  // Limit zoom-out distance
+    controls.minPolarAngle = Math.PI * 0.15; // Prevent flipping overhead
+    controls.maxPolarAngle = Math.PI * 0.82; // Prevent looking through floor
+    controls.enablePan = true;
     controls.target.set(0, 1.35, 0); // Focus on head area initially
     controlsRef.current = controls;
+
     renderer.setSize(getW(), getH());
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.75));
     renderer.outputColorSpace = THREE.SRGBColorSpace;
     renderer.toneMapping = THREE.ACESFilmicToneMapping;
-    renderer.toneMappingExposure = 1.1;
+    renderer.toneMappingExposure = 1.15;
 
-    // Background Planes & Custom Blur Shader
+    // Background Planes & Custom Gaussian Bokeh Depth Shader
     const bgGroup = new THREE.Group();
-    bgGroup.position.set(0, 1.45, -10); // Far behind avatar
+    bgGroup.position.set(0, 1.45, -10);
     scene.add(bgGroup);
     S.bgGroup = bgGroup;
-    S.bgPlaneGeo = new THREE.PlaneGeometry(24, 13.5); // Wide enough to cover frustum shifts
+    S.bgPlaneGeo = new THREE.PlaneGeometry(26, 14.5);
     S.bgTextureLoader = new THREE.TextureLoader();
     S.createBackgroundMaterial = (texture, opacity) => new THREE.ShaderMaterial({
       uniforms: {
         tDiffuse: { value: texture },
         opacity: { value: opacity },
-        blurSize: { value: 1.65 },
+        blurSize: { value: 1.8 },
         resolution: { value: new THREE.Vector2(texture.image?.width || 1024, texture.image?.height || 1024) }
       },
       vertexShader: `
@@ -444,16 +530,25 @@ export default function AvatarCanvas({ audioPlayEvent, emotion = 'neutral', gest
         uniform float blurSize;
         varying vec2 vUv;
         void main() {
-          vec2 texel = vec2(1.0 / resolution.x, 1.0 / resolution.y);
+          vec2 texel = vec2(1.0 / resolution.x, 1.0 / resolution.y) * blurSize;
           vec4 color = vec4(0.0);
-          float total = 0.0;
-          for(float x = -2.0; x <= 2.0; x++) {
-            for(float y = -2.0; y <= 2.0; y++) {
-              color += texture2D(tDiffuse, vUv + vec2(x, y) * texel * blurSize);
-              total += 1.0;
-            }
-          }
-          gl_FragColor = color / total;
+          // 9-tap weighted Gaussian distribution for soft cinematic background bokeh
+          color += texture2D(tDiffuse, vUv + vec2(-2.0, -2.0) * texel) * 0.045;
+          color += texture2D(tDiffuse, vUv + vec2(-1.0, -1.0) * texel) * 0.122;
+          color += texture2D(tDiffuse, vUv + vec2( 0.0, -1.5) * texel) * 0.143;
+          color += texture2D(tDiffuse, vUv + vec2( 1.0, -1.0) * texel) * 0.122;
+          color += texture2D(tDiffuse, vUv + vec2( 2.0,  0.0) * texel) * 0.045;
+          color += texture2D(tDiffuse, vUv + vec2( 0.0,  0.0) * texel) * 0.200;
+          color += texture2D(tDiffuse, vUv + vec2(-1.0,  1.0) * texel) * 0.122;
+          color += texture2D(tDiffuse, vUv + vec2( 0.0,  1.5) * texel) * 0.143;
+          color += texture2D(tDiffuse, vUv + vec2( 1.0,  1.0) * texel) * 0.122;
+          
+          // Soft radial vignette falloff to emphasize the avatar as center focal point
+          vec2 centerUv = (vUv - 0.5) * 1.8;
+          float vignette = clamp(1.0 - dot(centerUv, centerUv) * 0.45, 0.4, 1.0);
+          color.rgb *= vignette;
+
+          gl_FragColor = color;
           gl_FragColor.a *= opacity;
         }
       `,
@@ -462,23 +557,39 @@ export default function AvatarCanvas({ audioPlayEvent, emotion = 'neutral', gest
       depthTest: true
     });
 
-    // Lighting: Dynamic sync with character/background vibe
-    const keyLight = new THREE.DirectionalLight(0xffffff, Math.PI * 0.9);
-    keyLight.position.set(1.5, 2.5, 2);
+    // ── Three-Point + Dual-Rim Lighting Setup ────────────────────────────────
+    // 1. Key Light: Warm studio key from front-right
+    const keyLight = new THREE.DirectionalLight(0xfff3e3, Math.PI * 1.05);
+    keyLight.position.set(1.6, 2.2, 2.2);
     scene.add(keyLight);
     S.keyLight = keyLight;
     
-    const fillLight = new THREE.DirectionalLight(0xffffff, 0.6);
-    fillLight.position.set(-2, 1, -1);
+    // 2. Fill Light: Soft cool fill from front-left to open up shadows
+    const fillLight = new THREE.DirectionalLight(0xd4e8fc, 0.72);
+    fillLight.position.set(-2.2, 1.4, 1.6);
     scene.add(fillLight);
     S.fillLight = fillLight;
     
-    const rimLight = new THREE.DirectionalLight(0xffffff, 0.3);
-    rimLight.position.set(0, 3, -3);
-    scene.add(rimLight);
-    S.rimLight = rimLight;
+    // 3. Gold Rim Light: Warm gold rim accent from rear-right (UI Gold harmony)
+    const goldRimLight = new THREE.DirectionalLight(0xf5c560, 2.1);
+    goldRimLight.position.set(1.8, 2.2, -2.4);
+    scene.add(goldRimLight);
+    S.goldRimLight = goldRimLight;
     
-    const ambientLight = new THREE.AmbientLight(0xffffff, 0.35);
+    // 4. Cyan Rim Light: Tech cyan rim accent from rear-left (UI Cyan harmony)
+    const cyanRimLight = new THREE.DirectionalLight(0x06b6d4, 1.85);
+    cyanRimLight.position.set(-1.8, 1.9, -2.2);
+    scene.add(cyanRimLight);
+    S.cyanRimLight = cyanRimLight;
+
+    // 5. Bounce Light: Soft ground bounce under chin & neck
+    const bounceLight = new THREE.DirectionalLight(0x4a3220, 0.45);
+    bounceLight.position.set(0, -1.5, 0.8);
+    scene.add(bounceLight);
+    S.bounceLight = bounceLight;
+    
+    // 6. Ambient Light: Balanced base atmosphere
+    const ambientLight = new THREE.AmbientLight(0x282c3c, 0.55);
     scene.add(ambientLight);
     S.ambientLight = ambientLight;
 
@@ -486,7 +597,7 @@ export default function AvatarCanvas({ audioPlayEvent, emotion = 'neutral', gest
     const loader = new GLTFLoader();
     loader.register((parser) => new VRMLoaderPlugin(parser));
 
-    loader.load(avatarUrl, (gltf) => {
+    loader.load('./avatar.vrm', (gltf) => {
       if (!alive) return; // Abort if effect was cleaned up
       const vrm = gltf.userData.vrm;
       if (!vrm) { console.error('[VRM] No VRM data.'); return; }
@@ -531,6 +642,16 @@ export default function AvatarCanvas({ audioPlayEvent, emotion = 'neutral', gest
         console.log('%c[VRM] ✅ Expressions:', 'color:#44ff88;font-weight:bold',
           Object.keys(em.expressionMap ?? {}));
       }
+      // Locate face mesh with Fcl_* morph targets for expanded expression palette
+      vrm.scene.traverse((obj) => {
+        if (obj.isMesh && obj.morphTargetDictionary &&
+            obj.morphTargetDictionary['Fcl_ALL_Joy'] !== undefined &&
+            !S.faceMesh) {
+          S.faceMesh = obj;
+          console.log('%c[VRM] 🎭 Face mesh located with', 'color:#f9a8d4;font-weight:bold',
+            Object.keys(obj.morphTargetDictionary).length, 'morph targets');
+        }
+      });
       if (hum) {
         const bonesToCheck = [
           'hips', 'spine', 'chest', 'upperChest',
@@ -581,7 +702,7 @@ export default function AvatarCanvas({ audioPlayEvent, emotion = 'neutral', gest
       }
       const volBoost = S.currentVolume; // ranges ~0 to 1.5
       
-      const profile = CHARACTER_PROFILES[avatarUrl] || CHARACTER_PROFILES['/avatar.vrm'];
+      const profile = { breathRate: 1.0, swayRate: 1.0, swayAmp: 1.0, blinkMin: 2.0, blinkMax: 5.0, gazeMin: 2.0, gazeMax: 5.0 }; // Kavya
 
       // ── Natural Timing Jitter (Allan Pease 'organic movement' rule) ──────
       const jitter = Math.sin(S.time * 2.5 + S.organicNoiseSeed) * 0.05 + Math.sin(S.time * 4.1 + S.organicNoiseSeed * 0.7) * 0.03;
@@ -634,7 +755,158 @@ export default function AvatarCanvas({ audioPlayEvent, emotion = 'neutral', gest
         hipsNode.rotation.y = S.hipRotY;
       }
 
-      // ── Layer 2.5: NATURAL LOWER BODY ANIMATION (Weight shift + heel/leg bobbing) ──
+      // ── Micro-idle head noise (ultra-subtle, prevents robotic stillness) ──
+      if (!S.isSpeaking && S.interactionMode === 'standing') {
+        const neckNode = getNode('neck');
+        if (neckNode) {
+          // Very slow organic drift — nearly imperceptible individually but alive collectively
+          neckNode.rotation.x = lerp(neckNode.rotation.x,
+            Math.sin(S.time * 0.19 + S.organicNoiseSeed) * 0.012 +
+            Math.sin(S.time * 0.31 + S.organicNoiseSeed * 1.3) * 0.007, dt * 0.8);
+          neckNode.rotation.z = lerp(neckNode.rotation.z,
+            Math.sin(S.time * 0.13 + S.organicNoiseSeed * 0.7) * 0.009 +
+            Math.sin(S.time * 0.23 + S.organicNoiseSeed * 1.7) * 0.005, dt * 0.8);
+        }
+      }
+
+      // ── Layer 2.5: LOCOMOTION & SEATING KINEMATICS ENGINE ───────────────
+      const chairTargetX = 0.85;
+      const chairTargetZ = -0.50;
+      const chairSitY = -0.42;
+      const bookshelfTargetX = -1.10;
+      const bookshelfTargetZ = -0.50;
+
+      let isWalking = false;
+      let seatProgress = 0; // 0 = standing, 1 = fully seated
+
+      // ── Jump In-Place Physics ──
+      if (S.isJumping) {
+        S.jumpPhase += dt * 1.35;
+        const jp = S.jumpPhase;
+        if (jp < 0.2) {
+          const c = Math.sin((jp / 0.2) * Math.PI * 0.5);
+          S.vrmPosY = -0.09 * c;
+        } else if (jp < 0.75) {
+          const airP = (jp - 0.2) / 0.55;
+          S.vrmPosY = Math.sin(airP * Math.PI) * 0.38;
+        } else if (jp <= 1.0) {
+          const landP = (jp - 0.75) / 0.25;
+          S.vrmPosY = -0.06 * Math.sin((1.0 - landP) * Math.PI);
+        } else {
+          S.isJumping = false;
+          S.jumpPhase = 0;
+          S.vrmPosY = 0;
+        }
+      } else
+
+      if (S.interactionMode === 'walking_to_chair') {
+        isWalking = true;
+        S.interactionProgress = Math.min(1, S.interactionProgress + dt * 0.72);
+        const p = S.interactionProgress;
+        const e = p * p * (3 - 2 * p);
+        S.vrmPosX = lerp(0, chairTargetX, e);
+        S.vrmPosZ = lerp(0, chairTargetZ, e);
+        if (p < 0.85) {
+          S.vrmRotY = lerp(S.vrmRotY, 0.45, dt * 5.0);
+        } else {
+          S.vrmRotY = lerp(S.vrmRotY, 0.05, dt * 6.0);
+        }
+        S.walkPhase += dt * 6.8;
+        S.vrmPosY = Math.abs(Math.sin(S.walkPhase * 2)) * 0.025;
+        if (p >= 1) {
+          S.interactionMode = 'sitting_down';
+          S.interactionProgress = 0;
+        }
+      } else if (S.interactionMode === 'sitting_down') {
+        S.interactionProgress = Math.min(1, S.interactionProgress + dt * 1.15);
+        const p = S.interactionProgress;
+        seatProgress = p * p * (3 - 2 * p);
+        S.vrmPosX = chairTargetX;
+        S.vrmPosZ = chairTargetZ;
+        S.vrmPosY = lerp(0, chairSitY, seatProgress);
+        S.vrmRotY = lerp(S.vrmRotY, 0.05, dt * 6.0);
+        if (p >= 1) {
+          S.interactionMode = 'seated';
+        }
+      } else if (S.interactionMode === 'seated') {
+        seatProgress = 1.0;
+        S.vrmPosX = chairTargetX;
+        S.vrmPosZ = chairTargetZ;
+        S.vrmPosY = chairSitY;
+        S.vrmRotY = 0.05;
+      } else if (S.interactionMode === 'standing_up') {
+        S.interactionProgress = Math.min(1, S.interactionProgress + dt * 1.15);
+        const p = S.interactionProgress;
+        seatProgress = 1.0 - (p * p * (3 - 2 * p));
+        S.vrmPosX = chairTargetX;
+        S.vrmPosZ = chairTargetZ;
+        S.vrmPosY = lerp(0, chairSitY, seatProgress);
+        S.vrmRotY = 0.05;
+        if (p >= 1) {
+          S.returnFromX = chairTargetX;
+          S.returnFromZ = chairTargetZ;
+          S.interactionMode = 'walking_to_center';
+          S.interactionProgress = 0;
+        }
+      } else if (S.interactionMode === 'walking_to_bookshelf') {
+        isWalking = true;
+        S.interactionProgress = Math.min(1, S.interactionProgress + dt * 0.72);
+        const p = S.interactionProgress;
+        const e = p * p * (3 - 2 * p);
+        S.vrmPosX = lerp(0, bookshelfTargetX, e);
+        S.vrmPosZ = lerp(0, bookshelfTargetZ, e);
+        S.vrmRotY = lerp(S.vrmRotY, 0.40, dt * 5.0);
+        S.walkPhase += dt * 6.8;
+        S.vrmPosY = Math.abs(Math.sin(S.walkPhase * 2)) * 0.025;
+        if (p >= 1) {
+          S.interactionMode = 'reading_book';
+          S.interactionProgress = 0;
+          S.room?.setHeldBookVisible(true, S.vrmPosX, 1.08, S.vrmPosZ + 0.28, 0.40);
+        }
+      } else if (S.interactionMode === 'reading_book') {
+        S.vrmPosX = bookshelfTargetX;
+        S.vrmPosZ = bookshelfTargetZ;
+        S.vrmPosY = 0;
+        S.vrmRotY = 0.40;
+        S.room?.updateHeldBookPose(S.vrmPosX, 1.08 + Math.sin(S.time * 1.5) * 0.005, S.vrmPosZ + 0.28, 0.40);
+      } else if (S.interactionMode === 'putting_book_down') {
+        S.interactionProgress = Math.min(1, S.interactionProgress + dt * 1.5);
+        if (S.interactionProgress >= 1) {
+          S.room?.setHeldBookVisible(false);
+          S.returnFromX = bookshelfTargetX;
+          S.returnFromZ = bookshelfTargetZ;
+          S.interactionMode = 'walking_to_center';
+          S.interactionProgress = 0;
+        }
+      } else if (S.interactionMode === 'walking_to_center') {
+        isWalking = true;
+        S.interactionProgress = Math.min(1, S.interactionProgress + dt * 0.72);
+        const p = S.interactionProgress;
+        const e = p * p * (3 - 2 * p);
+        S.vrmPosX = lerp(S.returnFromX, 0, e);
+        S.vrmPosZ = lerp(S.returnFromZ, 0, e);
+        S.vrmRotY = lerp(S.vrmRotY, 0, dt * 6.0);
+        S.walkPhase += dt * 6.8;
+        S.vrmPosY = Math.abs(Math.sin(S.walkPhase * 2)) * 0.025;
+        if (p >= 1) {
+          S.vrmPosX = 0;
+          S.vrmPosY = 0;
+          S.vrmPosZ = 0;
+          S.vrmRotY = 0;
+          S.interactionMode = 'standing';
+        }
+      } else {
+        // Default standing
+        S.vrmPosX = 0;
+        S.vrmPosY = 0;
+        S.vrmPosZ = 0;
+        S.vrmRotY = 0;
+      }
+
+      vrm.scene.position.set(S.vrmPosX, S.vrmPosY, S.vrmPosZ);
+      vrm.scene.rotation.y = S.vrmRotY;
+
+      // Leg / Ankle Bone Updates
       const leftUpperLeg = getNode('leftUpperLeg');
       const rightUpperLeg = getNode('rightUpperLeg');
       const leftLowerLeg = getNode('leftLowerLeg');
@@ -643,27 +915,99 @@ export default function AvatarCanvas({ audioPlayEvent, emotion = 'neutral', gest
       const rightFoot = getNode('rightFoot');
 
       if (leftUpperLeg && rightUpperLeg && leftLowerLeg && rightLowerLeg && leftFoot && rightFoot) {
-        // Hips shift sways the weight.
-        const hipShift = S.hipRotZ; // sways between ~-0.025 and 0.025
-        
-        // Cyclic weight shifting rhythm (every ~8 seconds, shifting weight left to right)
-        const shiftCycle = S.time * 0.78;
-        const leftLegLift = Math.max(0, Math.sin(shiftCycle)) * 0.22;  // bent and lifted slightly (heel raise)
-        const rightLegLift = Math.max(0, -Math.sin(shiftCycle)) * 0.22;
-        
-        const leftLegBend = hipShift > 0 ? (hipShift * 3.5) : 0;
-        const rightLegBend = hipShift <= 0 ? (-hipShift * 3.5) : 0;
+        if (S.isJumping) {
+          // Jump leg kinematics — 3 phases: crouch (0-0.2), air tuck (0.2-0.75), land (0.75-1.0)
+          const jp = S.jumpPhase;
+          let thighTarget = 0, calfTarget = 0, footTarget = 0;
+          if (jp < 0.2) {
+            // Crouch charge: knees bend forward
+            const t = jp / 0.2;
+            thighTarget = 0.40 * t;
+            calfTarget = 0.70 * t;
+            footTarget = -0.15 * t;
+          } else if (jp < 0.75) {
+            // Airborne tuck: legs lift slightly
+            const t = (jp - 0.2) / 0.55;
+            thighTarget = lerp(0.40, -0.22, t);
+            calfTarget = lerp(0.70, 0.50, t);
+            footTarget = lerp(-0.15, 0.10, t);
+          } else {
+            // Landing absorption
+            const t = (jp - 0.75) / 0.25;
+            thighTarget = lerp(-0.22, 0.28, t);
+            calfTarget = lerp(0.50, 0.60, t);
+            footTarget = lerp(0.10, -0.05, t);
+          }
+          const legSpeed = dt * 14.0;
+          leftUpperLeg.rotation.x  = lerp(leftUpperLeg.rotation.x,  thighTarget, legSpeed);
+          leftUpperLeg.rotation.y  = lerp(leftUpperLeg.rotation.y,  0, legSpeed);
+          leftUpperLeg.rotation.z  = lerp(leftUpperLeg.rotation.z,  0, legSpeed);
+          leftLowerLeg.rotation.x  = lerp(leftLowerLeg.rotation.x,  calfTarget, legSpeed);
+          leftFoot.rotation.x      = lerp(leftFoot.rotation.x,      footTarget, legSpeed);
+          rightUpperLeg.rotation.x = lerp(rightUpperLeg.rotation.x, thighTarget, legSpeed);
+          rightUpperLeg.rotation.y = lerp(rightUpperLeg.rotation.y, 0, legSpeed);
+          rightUpperLeg.rotation.z = lerp(rightUpperLeg.rotation.z, 0, legSpeed);
+          rightLowerLeg.rotation.x = lerp(rightLowerLeg.rotation.x, calfTarget, legSpeed);
+          rightFoot.rotation.x     = lerp(rightFoot.rotation.x,     footTarget, legSpeed);
+        } else if (isWalking) {
+          // Walk cycle leg swing
+          const lUpper = Math.sin(S.walkPhase) * 0.52;
+          const rUpper = -Math.sin(S.walkPhase) * 0.52;
+          const lLower = Math.max(0, -Math.sin(S.walkPhase) * 0.60);
+          const rLower = Math.max(0, Math.sin(S.walkPhase) * 0.60);
+          const lFootRot = Math.sin(S.walkPhase) * 0.25;
+          const rFootRot = -Math.sin(S.walkPhase) * 0.25;
 
-        // Apply natural knee bends, thigh rotations, and ankle rotations to simulate natural shifting
-        leftUpperLeg.rotation.x = lerp(leftUpperLeg.rotation.x, -leftLegLift * 0.7 - leftLegBend * 0.4, dt * 2.0);
-        leftUpperLeg.rotation.z = lerp(leftUpperLeg.rotation.z, -hipShift * 0.5, dt * 2.0);
-        leftLowerLeg.rotation.x = lerp(leftLowerLeg.rotation.x, leftLegLift * 1.5 + leftLegBend * 1.2, dt * 2.0);
-        leftFoot.rotation.x = lerp(leftFoot.rotation.x, leftLegLift * 0.8 + leftLegBend * 0.6, dt * 2.0);
+          leftUpperLeg.rotation.x = lerp(leftUpperLeg.rotation.x, lUpper, dt * 8.0);
+          leftUpperLeg.rotation.y = lerp(leftUpperLeg.rotation.y, 0, dt * 4.0);
+          leftUpperLeg.rotation.z = lerp(leftUpperLeg.rotation.z, 0, dt * 4.0);
+          leftLowerLeg.rotation.x = lerp(leftLowerLeg.rotation.x, lLower, dt * 8.0);
+          leftFoot.rotation.x = lerp(leftFoot.rotation.x, lFootRot, dt * 8.0);
 
-        rightUpperLeg.rotation.x = lerp(rightUpperLeg.rotation.x, -rightLegLift * 0.7 - rightLegBend * 0.4, dt * 2.0);
-        rightUpperLeg.rotation.z = lerp(rightUpperLeg.rotation.z, -hipShift * 0.5, dt * 2.0);
-        rightLowerLeg.rotation.x = lerp(rightLowerLeg.rotation.x, rightLegLift * 1.5 + rightLegBend * 1.2, dt * 2.0);
-        rightFoot.rotation.x = lerp(rightFoot.rotation.x, rightLegLift * 0.8 + rightLegBend * 0.6, dt * 2.0);
+          rightUpperLeg.rotation.x = lerp(rightUpperLeg.rotation.x, rUpper, dt * 8.0);
+          rightUpperLeg.rotation.y = lerp(rightUpperLeg.rotation.y, 0, dt * 4.0);
+          rightUpperLeg.rotation.z = lerp(rightUpperLeg.rotation.z, 0, dt * 4.0);
+          rightLowerLeg.rotation.x = lerp(rightLowerLeg.rotation.x, rLower, dt * 8.0);
+          rightFoot.rotation.x = lerp(rightFoot.rotation.x, rFootRot, dt * 8.0);
+        } else if (seatProgress > 0) {
+          // Sitting pose interpolation (seatProgress: 0 = standing, 1 = seated)
+          const targetThighX = -1.54 * seatProgress;
+          const targetCalfX  =  1.54 * seatProgress;
+          const targetThighY = -0.06 * seatProgress;
+          const targetFootX  =  0.12 * seatProgress;
+
+          leftUpperLeg.rotation.x = lerp(leftUpperLeg.rotation.x, targetThighX, dt * 6.0);
+          leftUpperLeg.rotation.y = lerp(leftUpperLeg.rotation.y, targetThighY, dt * 6.0);
+          leftUpperLeg.rotation.z = lerp(leftUpperLeg.rotation.z, 0, dt * 4.0);
+          leftLowerLeg.rotation.x = lerp(leftLowerLeg.rotation.x, targetCalfX, dt * 6.0);
+          leftFoot.rotation.x = lerp(leftFoot.rotation.x, targetFootX, dt * 6.0);
+
+          rightUpperLeg.rotation.x = lerp(rightUpperLeg.rotation.x, targetThighX, dt * 6.0);
+          rightUpperLeg.rotation.y = lerp(rightUpperLeg.rotation.y, -targetThighY, dt * 6.0);
+          rightUpperLeg.rotation.z = lerp(rightUpperLeg.rotation.z, 0, dt * 4.0);
+          rightLowerLeg.rotation.x = lerp(rightLowerLeg.rotation.x, targetCalfX, dt * 6.0);
+          rightFoot.rotation.x = lerp(rightFoot.rotation.x, targetFootX, dt * 6.0);
+        } else {
+          // Default standing weight shifting
+          const hipShift = S.hipRotZ;
+          const shiftCycle = S.time * 0.78;
+          const leftLegLift = Math.max(0, Math.sin(shiftCycle)) * 0.22;
+          const rightLegLift = Math.max(0, -Math.sin(shiftCycle)) * 0.22;
+          const leftLegBend = hipShift > 0 ? (hipShift * 3.5) : 0;
+          const rightLegBend = hipShift <= 0 ? (-hipShift * 3.5) : 0;
+
+          leftUpperLeg.rotation.x = lerp(leftUpperLeg.rotation.x, -leftLegLift * 0.7 - leftLegBend * 0.4, dt * 2.0);
+          leftUpperLeg.rotation.y = lerp(leftUpperLeg.rotation.y, 0, dt * 2.0);
+          leftUpperLeg.rotation.z = lerp(leftUpperLeg.rotation.z, -hipShift * 0.5, dt * 2.0);
+          leftLowerLeg.rotation.x = lerp(leftLowerLeg.rotation.x, leftLegLift * 1.5 + leftLegBend * 1.2, dt * 2.0);
+          leftFoot.rotation.x = lerp(leftFoot.rotation.x, leftLegLift * 0.8 + leftLegBend * 0.6, dt * 2.0);
+
+          rightUpperLeg.rotation.x = lerp(rightUpperLeg.rotation.x, -rightLegLift * 0.7 - rightLegBend * 0.4, dt * 2.0);
+          rightUpperLeg.rotation.y = lerp(rightUpperLeg.rotation.y, 0, dt * 2.0);
+          rightUpperLeg.rotation.z = lerp(rightUpperLeg.rotation.z, -hipShift * 0.5, dt * 2.0);
+          rightLowerLeg.rotation.x = lerp(rightLowerLeg.rotation.x, rightLegLift * 1.5 + rightLegBend * 1.2, dt * 2.0);
+          rightFoot.rotation.x = lerp(rightFoot.rotation.x, rightLegLift * 0.8 + rightLegBend * 0.6, dt * 2.0);
+        }
       }
 
       // ── Layer 3: SPINE LEAN (Emotion-driven Posture) ─────────────────────
@@ -875,6 +1219,41 @@ export default function AvatarCanvas({ audioPlayEvent, emotion = 'neutral', gest
         }
       }
 
+      // ── Layer 8.2: EXPANDED RAW MORPH EXPRESSION LAYERS ─────────────────
+      // Drives Fcl_* morph targets directly for richer emotional nuance.
+      // Mouth/jaw morphs are suppressed during active lip-sync (lipActive).
+      if (S.faceMesh && S.faceMesh.morphTargetDictionary && S.faceMesh.morphTargetInfluences) {
+        const morphDict = S.faceMesh.morphTargetDictionary;
+        const morphInf  = S.faceMesh.morphTargetInfluences;
+        const morphLayers = EMOTION_MORPH_LAYERS[S.currentEmotionKey] ?? [];
+        const isLipActive = S.lipActive;
+
+        // Determine mouth morph names to skip during lip-sync
+        const mouthMorphs = new Set(['Fcl_MTH_A','Fcl_MTH_E','Fcl_MTH_I','Fcl_MTH_O','Fcl_MTH_U',
+          'Fcl_MTH_Fun','Fcl_MTH_Joy','Fcl_MTH_Sorrow','Fcl_MTH_Angry','Fcl_MTH_Surprised',
+          'Fcl_MTH_Close','Fcl_MTH_Large','Fcl_MTH_Small','Fcl_MTH_Neutral','Fcl_MTH_Up','Fcl_MTH_Down']);
+
+        // Fade out all tracked morphs first (gentle decay)
+        if (!S._activeMorphNames) S._activeMorphNames = new Set();
+        for (const name of S._activeMorphNames) {
+          const idx = morphDict[name];
+          if (idx !== undefined) {
+            morphInf[idx] = lerp(morphInf[idx], 0, dt * 2.5);
+          }
+        }
+        S._activeMorphNames.clear();
+
+        // Apply current emotion morph layers
+        for (const { m, w } of morphLayers) {
+          if (isLipActive && mouthMorphs.has(m)) continue; // lip-sync wins
+          const idx = morphDict[m];
+          if (idx === undefined) continue;
+          const target = w * EMOTION_MORPH_MAX * S.emotionWeight;
+          morphInf[idx] = lerp(morphInf[idx] ?? 0, target, dt * 2.0);
+          S._activeMorphNames.add(m);
+        }
+      }
+
       // ── Layer 8.5: IDLE MICRO-FIDGET SYSTEM ──────────────────────────────
       // Real humans standing still don't freeze — they occasionally shift weight,
       // adjust clothing, touch hair etc. This adds random subtle idle micro-movements.
@@ -899,16 +1278,29 @@ export default function AvatarCanvas({ audioPlayEvent, emotion = 'neutral', gest
         S.fidgetTimer = rand(6.0, 14.0);
       }
 
-      // ── Layer 9: HAND GESTURES (Smoothness Engine) ─────────────────────
-      const targetGesture = selectGesture(S.isSpeaking, S.currentEmotionKey, S.gestureOverride, avatarUrl, S.time, S.rapportCurrent);
+      // ── Layer 9: HAND GESTURES (Smoothness Engine + GesturePlayer overlay) ─────
+      // Update transient gesture player
+      S.gesturePlayer.update(dt);
+
+      const baseGesture = selectGesture(S.isSpeaking, S.currentEmotionKey, S.gestureOverride, S.time, S.rapportCurrent, S.interactionMode === 'seated', S.interactionMode === 'reading_book', S.isJumping);
+      const gpOverlay = S.gesturePlayer.overlay;
+
+      // Blend: if GesturePlayer is active, lerp base → overlay based on weight
+      const targetGesture = (gpOverlay && gpOverlay.weight > 0.05) ? gpOverlay.name : baseGesture;
+      const overlayBlend  = gpOverlay ? gpOverlay.weight : 0;
 
       if (targetGesture !== S.currentGesture) {
         console.log(`%c[GESTURE] ${S.currentGesture} → ${targetGesture}`, 'color:#fbbf24;font-weight:bold');
         S.currentGesture = targetGesture;
-        S.wavePhase      = 0; // reset wave on any gesture change
+        S.wavePhase      = 0;
       }
 
-      const pose = GESTURES[S.currentGesture] ?? GESTURES.neutral;
+      // If overlay is fading out, use base pose blended by (1 - overlayBlend)
+      const basePose    = GESTURES[baseGesture] ?? GESTURES.neutral;
+      const overlayPose = GESTURES[S.currentGesture] ?? GESTURES.neutral;
+      // For full overlay: use overlayPose; for base: use basePose; blend between them
+      const activePose = overlayBlend > 0.05 ? overlayPose : basePose;
+      const pose = activePose;
 
       // Per-gesture lerp speed — slow gestures feel heavy/intentional, fast feel reactive
       const GESTURE_LERP_SPEED = {
@@ -937,6 +1329,10 @@ export default function AvatarCanvas({ audioPlayEvent, emotion = 'neutral', gest
         happy:           2.5,
         sad:             1.0,   // slowest — heavy sadness
         thinking:        1.8,
+        thumbs_up:       3.2,
+        point_up:        3.0,
+        nodding:         2.4,
+        head_tilt:       2.0,
         // Charming gestures
         eyeContact:      1.5,   // very slow, confident stillness
         interestedFlash: 4.2,   // quick flash reaction
@@ -1147,6 +1543,33 @@ export default function AvatarCanvas({ audioPlayEvent, emotion = 'neutral', gest
         boneNode.rotation.z = lerp(boneNode.rotation.z, tz, gLerpSpeed);
       }
 
+      // ── Layer 9.5: FINGER BONE POSES ─────────────────────────────────────
+      if (hum) {
+        const [rPoseName, lPoseName] = GESTURE_FINGER_POSE[S.currentGesture] ?? ['relaxed', 'relaxed'];
+        const rPose = FINGER_POSES[rPoseName] ?? FINGER_POSES.relaxed;
+        const lPose = FINGER_POSES[lPoseName] ?? FINGER_POSES.relaxed;
+        const flerpSpeed = dt * (S.fingerLerpSpeed ?? 6.0);
+
+        for (const [finger, sides] of Object.entries(FINGER_JOINTS)) {
+          const rCurl = rPose[finger];
+          const lCurl = lPose[finger];
+          if (rCurl && lCurl) {
+            for (let i = 0; i < 3; i++) {
+              const rNode = getNode(sides.R[i]);
+              const lNode = getNode(sides.L[i]);
+              if (rNode) rNode.rotation.z = lerp(rNode.rotation.z, rCurl[i], flerpSpeed);
+              if (lNode) lNode.rotation.z = lerp(lNode.rotation.z, lCurl[i], flerpSpeed);
+            }
+          }
+          if (finger === 'thumb') {
+            const rThumbMeta = getNode('rightThumbMetacarpal');
+            const lThumbMeta = getNode('leftThumbMetacarpal');
+            if (rThumbMeta) rThumbMeta.rotation.x = lerp(rThumbMeta.rotation.x, (rPose?.thumb?.[0] ?? 0) > 0.3 ? -0.12 : 0.25, flerpSpeed);
+            if (lThumbMeta) lThumbMeta.rotation.x = lerp(lThumbMeta.rotation.x, (lPose?.thumb?.[0] ?? 0) > 0.3 ? -0.12 : 0.25, flerpSpeed);
+          }
+        }
+      }
+
       // ── Layer 10: LIP SYNC ───────────────────────────────────────────────
       if (em && S.lipActive && S.lipActx) {
         const t = S.lipActx.currentTime - S.lipStartTime;
@@ -1210,12 +1633,22 @@ export default function AvatarCanvas({ audioPlayEvent, emotion = 'neutral', gest
     };
     animate();
 
+    // Responsive resize handler with ResizeObserver (desktop window & layout resize)
     const onResize = () => {
       const w = getW(), h = getH();
+      if (w === 0 || h === 0) return;
       camera.aspect = w / h;
       camera.updateProjectionMatrix();
       renderer.setSize(w, h);
     };
+
+    let resizeObserver = null;
+    if (typeof ResizeObserver !== 'undefined' && canvasRef.current?.parentElement) {
+      resizeObserver = new ResizeObserver(() => {
+        onResize();
+      });
+      resizeObserver.observe(canvasRef.current.parentElement);
+    }
     window.addEventListener('resize', onResize);
     setTimeout(onResize, 50);
 
@@ -1223,6 +1656,10 @@ export default function AvatarCanvas({ audioPlayEvent, emotion = 'neutral', gest
       alive = false;
       cancelAnimationFrame(rafId);
       window.removeEventListener('resize', onResize);
+      if (resizeObserver) {
+        resizeObserver.disconnect();
+        resizeObserver = null;
+      }
       // Dispose OrbitControls
       if (controlsRef.current) {
         controlsRef.current.dispose();
@@ -1233,26 +1670,76 @@ export default function AvatarCanvas({ audioPlayEvent, emotion = 'neutral', gest
         sceneRef.current?.remove(vrmRef.current.scene);
         vrmRef.current = null;
       }
-      S.bgGroup = null;
-      S.bgActiveMesh = null;
-      S.bgActiveMat = null;
-      S.bgOldMesh = null;
-      S.oldBgMat = null;
-      S.newBgMat = null;
+      if (S.room) {
+        S.room.dispose();
+        S.room = null;
+      }
       S.keyLight = null;
       S.fillLight = null;
-      S.rimLight = null;
+      S.goldRimLight = null;
+      S.cyanRimLight = null;
+      S.bounceLight = null;
       S.ambientLight = null;
       // Do NOT dispose renderer here — it is persistent (rendererRef)
       // Renderer is only disposed when component fully unmounts (see cleanup below)
     };
-  }, [avatarUrl]);
+  }, []);
+
+  // Interactive Room Lamp bulb state update
+  useEffect(() => {
+    if (S.room) {
+      S.room.setLampState(lampOn);
+    }
+  }, [lampOn]);
+
+  // Transient gesture overlay — plays a short gesture clip on top of base pose
+  useEffect(() => {
+    if (!transientGesture) return;
+    const { name, fadeIn = 0.25, hold = 1.0, fadeOut = 0.4 } = transientGesture;
+    S.gesturePlayer.play(name, { fadeIn, hold, fadeOut });
+  }, [transientGesture]);
+
+  // Navigate & Interaction triggers (Chair Sit, Bookshelf Reading, Jump)
+  useEffect(() => {
+    if (interactionPose === 'seated') {
+      if (S.interactionMode === 'reading_book') {
+        S.room?.setHeldBookVisible(false);
+      }
+      if (S.interactionMode === 'standing' || S.interactionMode === 'walking_to_center' || S.interactionMode === 'reading_book') {
+        S.interactionMode = 'walking_to_chair';
+        S.interactionProgress = 0;
+      }
+    } else if (interactionPose === 'reading') {
+      if (S.interactionMode === 'standing' || S.interactionMode === 'walking_to_center') {
+        S.interactionMode = 'walking_to_bookshelf';
+        S.interactionProgress = 0;
+      } else if (S.interactionMode === 'seated') {
+        S.interactionMode = 'standing_up';
+        S.interactionProgress = 0;
+        setTimeout(() => {
+          S.interactionMode = 'walking_to_bookshelf';
+          S.interactionProgress = 0;
+        }, 1200);
+      }
+    } else if (interactionPose === 'jump') {
+      S.isJumping = true;
+      S.jumpPhase = 0;
+    } else if (interactionPose === 'standing') {
+      if (S.interactionMode === 'seated' || S.interactionMode === 'sitting_down') {
+        S.interactionMode = 'standing_up';
+        S.interactionProgress = 0;
+      } else if (S.interactionMode === 'reading_book') {
+        S.interactionMode = 'putting_book_down';
+        S.interactionProgress = 0;
+      }
+    }
+  }, [interactionPose]);
 
 
   // Character/theme background image update -- independent from VRM loading.
   useEffect(() => {
     let cancelled = false;
-    const candidates = getBackgroundCandidates(avatarUrl, theme);
+    const candidates = getBackgroundCandidates(theme);
     if (currentBgUrlRef.current && candidates.includes(currentBgUrlRef.current) && S.bgActiveMesh) return;
 
     const loadCandidate = (index = 0) => {
@@ -1304,34 +1791,40 @@ export default function AvatarCanvas({ audioPlayEvent, emotion = 'neutral', gest
 
     loadCandidate();
     return () => { cancelled = true; };
-  }, [avatarUrl, theme]);
+  }, [theme]);
 
-  // Lighting follows the active character room and light/dark mode.
+  // Lighting follows the active theme (dark/light) with dual rim highlights
   useEffect(() => {
-    const avatarName = AVATAR_NAMES[avatarUrl] || 'kavya';
-    const mood = BACKGROUND_LIGHTING[avatarName] || BACKGROUND_LIGHTING.kavya;
     const isDark = theme === 'dark';
 
     if (sceneRef.current) {
       sceneRef.current.background = new THREE.Color(isDark ? 0x080a12 : 0xf7f2ea);
     }
     if (S.keyLight) {
-      S.keyLight.color.setHex(isDark ? mood.keyDark : mood.keyLight);
-      S.keyLight.intensity = Math.PI * (isDark ? 0.95 : 0.82);
+      S.keyLight.color.setHex(isDark ? 0xfff3e3 : 0xfffaed);
+      S.keyLight.intensity = Math.PI * (isDark ? 1.05 : 0.90);
     }
     if (S.fillLight) {
-      S.fillLight.color.setHex(isDark ? mood.fillDark : mood.fillLight);
-      S.fillLight.intensity = isDark ? 0.58 : 0.72;
+      S.fillLight.color.setHex(isDark ? 0xd4e8fc : 0xebf4ff);
+      S.fillLight.intensity = isDark ? 0.72 : 0.85;
     }
-    if (S.rimLight) {
-      S.rimLight.color.setHex(isDark ? 0xdbeafe : 0xffffff);
-      S.rimLight.intensity = isDark ? 0.36 : 0.24;
+    if (S.goldRimLight) {
+      S.goldRimLight.color.setHex(isDark ? 0xf5c560 : 0xd49b28);
+      S.goldRimLight.intensity = isDark ? 2.1 : 1.4;
+    }
+    if (S.cyanRimLight) {
+      S.cyanRimLight.color.setHex(isDark ? 0x06b6d4 : 0x0284c7);
+      S.cyanRimLight.intensity = isDark ? 1.85 : 1.2;
+    }
+    if (S.bounceLight) {
+      S.bounceLight.color.setHex(isDark ? 0x4a3220 : 0x6e4e35);
+      S.bounceLight.intensity = isDark ? 0.45 : 0.35;
     }
     if (S.ambientLight) {
-      S.ambientLight.color.setHex(isDark ? 0xd7ddff : 0xfff7ed);
-      S.ambientLight.intensity = isDark ? 0.34 : 0.42;
+      S.ambientLight.color.setHex(isDark ? 0x282c3c : 0xfffbf5);
+      S.ambientLight.intensity = isDark ? 0.55 : 0.65;
     }
-  }, [avatarUrl, theme]);
+  }, [theme]);
 
   // Frontend-only mirroring signal from recent user text.
   useEffect(() => {

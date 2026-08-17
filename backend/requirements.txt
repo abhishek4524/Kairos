@@ -9,4 +9,9 @@ pydub
 openai
 python-dotenv
 pymongo
-
+silero-vad
+webrtcvad-wheels
+chromadb
+sentence-transformers
+pypdf
+python-multipart

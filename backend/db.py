@@ -1,5 +1,14 @@
 import os
+import sys
 import time
+
+# Force UTF-8 stdout/stderr — prevents UnicodeEncodeError when spawned by
+# Electron on Windows (cp1252 default can't encode emoji in print statements)
+try:
+    sys.stdout.reconfigure(encoding='utf-8', errors='replace')
+    sys.stderr.reconfigure(encoding='utf-8', errors='replace')
+except AttributeError:
+    pass  # Python < 3.7 fallback
 from pymongo import MongoClient
 from pymongo.errors import ConnectionFailure
 

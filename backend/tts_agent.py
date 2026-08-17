@@ -66,62 +66,14 @@ DEFAULT_VOICE = "en-IN-NeerjaNeural"
 # rate      → baseline % speed offset (e.g. +20 = faster, -10 = slower)
 #
 # Character mapping:
-#   avatar.vrm  → Kavya   — warm, neutral Indian female
-#   avatar1.vrm → Shriya  — slightly sharper/faster (sarcasm needs a quicker delivery)
-#   avatar2.vrm → Kumar   — measured male, slightly slower for thoughtful tone
-#   avatar3.vrm → Lucy    — high-pitch, fast — maximum energy
-#   avatar4.vrm → Sara    — low-pitch, slow — calming, soothing
-#   avatar5.vrm → Aanya   — child voice (AnaNeural), highest pitch
-#   avatar6.vrm → Ankur   — chill male, slightly upbeat
-AVATAR_VOICE_CONFIG = {
-    "avatar.vrm": {   # Kavya — warm, natural
+def _get_edge_voice(text: str, language: str, avatar: str = "avatar.vrm") -> tuple[str, int, int]:
+    config = {
         "voice_hi": "hi-IN-SwaraNeural",
         "voice_en": "en-IN-NeerjaNeural",
         "pitch": 0, "rate": +15,
-    },
-    "avatar1.vrm": {  # Shriya — sharper, quicker; sarcasm lands better with pace
-        "voice_hi": "hi-IN-SwaraNeural",
-        "voice_en": "en-IN-NeerjaNeural",
-        "pitch": +15, "rate": +20,
-    },
-    "avatar2.vrm": {  # Kumar — deep male, deliberate pace
-        "voice_hi": "hi-IN-MadhurNeural",
-        "voice_en": "en-IN-PrabhatNeural",
-        "pitch": -5, "rate": +5,
-    },
-    "avatar3.vrm": {  # Lucy — highest energy: fast, bright, loud
-        "voice_hi": "hi-IN-SwaraNeural",
-        "voice_en": "en-US-AriaNeural",
-        "pitch": +30, "rate": +35,
-    },
-    "avatar4.vrm": {  # Sara — cute girl voice
-        "voice_hi": "hi-IN-SwaraNeural",
-        "voice_en": "en-US-AnaNeural",
-        "pitch": +20, "rate": +20,
-    },
-    "avatar5.vrm": {  # Aanya — child voice (AnaNeural), very high pitch
-        "voice_hi": "hi-IN-SwaraNeural",
-        "voice_en": "en-US-AnaNeural",
-        "pitch": +50, "rate": +25,
-    },
-    "avatar6.vrm": {  # Ankur — chill male, slightly easy-going pace
-        "voice_hi": "hi-IN-MadhurNeural",
-        "voice_en": "en-IN-PrabhatNeural",
-        "pitch": +5, "rate": +15,
-    },
-}
-
-def _get_edge_voice(text: str, language: str, avatar: str = "avatar.vrm") -> tuple[str, int, int]:
-    config = AVATAR_VOICE_CONFIG.get(avatar, AVATAR_VOICE_CONFIG["avatar.vrm"])
-    
-    is_hindi = False
-    for ch in text:
-        cp = ord(ch)
-        if 0x0900 <= cp <= 0x097F:   # Devanagari
-            is_hindi = True
-            break
-            
-    voice = config["voice_hi"] if (is_hindi or language == "hi") else config["voice_en"]
+    }
+    # LLM output is now strictly enforced to be English, so we always use the English voice
+    voice = config["voice_en"]
     return voice, config["pitch"], config["rate"]
 
 
@@ -153,30 +105,34 @@ async def _generate_edge_audio(text: str, language: str, emotion: str = "neutral
     rate_val = base_rate
     pitch_val = base_pitch
     
-    # Apply dynamic Voice Tone Variation based on emotion tags
-    if emotion in ["happy", "jollyLaughter", "excited"]:
-        rate_val += 12
-        pitch_val += 15
-    elif emotion in ["sad", "comforting", "thoughtfulness"]:
-        rate_val -= 15
-        pitch_val -= 10
-    elif emotion == "thinking":
+    # Apply dynamic Voice Tone Variation based on emotion tags for rich vocal expressiveness
+    if emotion in ["happy", "jollyLaughter", "excited", "approval"]:
+        rate_val += 18
+        pitch_val += 22
+    elif emotion in ["sad", "comforting", "thoughtfulness", "calm"]:
         rate_val -= 10
-    elif emotion in ["surprised", "surprise"]:
-        rate_val += 15
-        pitch_val += 20
-    elif emotion in ["anger", "displeasure"]:
+        pitch_val -= 5
+    elif emotion in ["thinking", "focused"]:
+        rate_val -= 8
+        pitch_val -= 2
+    elif emotion in ["surprised", "surprise", "interestedFlash"]:
         rate_val += 20
-        pitch_val -= 15 # Lower pitch but much faster/louder feel
+        pitch_val += 28
+    elif emotion in ["anger", "displeasure", "opposition"]:
+        rate_val += 22
+        pitch_val -= 18
     elif emotion in ["annoyed", "disagreement"]:
-        rate_val -= 5
-        pitch_val -= 10 # Flat and unamused
-    elif emotion in ["confidentSpeech", "leadership", "presentation"]:
-        rate_val += 5
-        pitch_val += 5 # Crisp and clear
-    elif emotion in ["coySmile", "blushing", "receptive"]:
-        rate_val -= 10
-        pitch_val += 10 # Soft, slightly higher and slower
+        rate_val -= 4
+        pitch_val -= 12
+    elif emotion in ["confidentSpeech", "leadership", "presentation", "confident"]:
+        rate_val += 12
+        pitch_val += 10
+    elif emotion in ["coySmile", "blushing", "receptive", "friendlyContact", "greeting"]:
+        rate_val += 6
+        pitch_val += 14
+    elif emotion in ["casualChat", "relaxed", "openPosture", "openness"]:
+        rate_val += 4
+        pitch_val += 6
         
         
     rate = f"{rate_val:+}%"

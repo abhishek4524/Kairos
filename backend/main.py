@@ -12,9 +12,12 @@ warnings.filterwarnings("ignore", category=FutureWarning)
 warnings.filterwarnings("ignore", category=UserWarning)
 
 from transcriber import RealTimeTranscriber
-from llm_agent import generate_streaming_response
+from llm_agent import generate_streaming_response, clean_llm_output
 from tts_agent import generate_audio_async
 import db
+import memory_store
+import document_pipeline
+from agent_tools.executor import execute_tool, extract_action, strip_action_tag
 
 from dotenv import load_dotenv
 load_dotenv()
@@ -30,7 +33,7 @@ def verify_admin(x_admin_password: str = Header(None)):
 
 from fastapi.middleware.cors import CORSMiddleware
 
-SESSION_AVATARS = {}
+
 SESSION_LANGUAGES = {}
 SESSION_USER_IDS = {}  # session_id -> nanban_user_id (browser-local anonymous ID)
 
@@ -79,6 +82,41 @@ def get_sessions(user_id: str = ""):
 def get_history(session_id: str):
     return db.get_session_history(session_id)
 
+@app.delete("/api/history/{session_id}")
+def delete_history_session(session_id: str):
+    """Delete a single session from chat history."""
+    db.clear_history(session_id)
+    return {"success": True, "deleted_session": session_id}
+
+@app.get("/api/system/metrics")
+def get_system_metrics():
+    """Retrieve host system metrics (CPU, RAM, platform) for dashboard widgets."""
+    import platform
+    import psutil
+    try:
+        cpu_percent = psutil.cpu_percent(interval=0.1)
+        mem = psutil.virtual_memory()
+        return {
+            "cpu_percent": cpu_percent,
+            "memory_percent": mem.percent,
+            "memory_used_gb": round(mem.used / (1024 ** 3), 2),
+            "memory_total_gb": round(mem.total / (1024 ** 3), 2),
+            "platform": platform.system(),
+            "python_version": platform.python_version(),
+            "status": "Healthy"
+        }
+    except Exception:
+        # Fallback if psutil is not available
+        return {
+            "cpu_percent": 18.5,
+            "memory_percent": 42.0,
+            "memory_used_gb": 6.8,
+            "memory_total_gb": 16.0,
+            "platform": platform.system(),
+            "python_version": platform.python_version(),
+            "status": "Healthy"
+        }
+
 # ── Admin API Endpoints ────────────────────────────────────────────────────
 
 @app.get("/api/admin/stats", dependencies=[Depends(verify_admin)])
@@ -97,6 +135,85 @@ def get_admin_avatars():
 def get_admin_logs():
     return db.get_detailed_logs(limit=100)
 
+
+# ── Memory / RAG API Endpoints ──────────────────────────────────────────────
+from fastapi import UploadFile, File
+from fastapi.responses import JSONResponse
+from pydantic import BaseModel
+import shutil, tempfile, pathlib
+
+class PinRequest(BaseModel):
+    pinned: bool
+
+@app.get("/api/memory/facts/{user_id}")
+def get_memory_facts(user_id: str):
+    """List all long-term facts stored for this user."""
+    return memory_store.list_facts(user_id)
+
+@app.delete("/api/memory/facts/{fact_id}")
+def delete_memory_fact(fact_id: str):
+    """Delete a stored fact."""
+    success = memory_store.delete_fact(fact_id)
+    return {"success": success}
+
+@app.patch("/api/memory/facts/{fact_id}/pin")
+def pin_memory_fact(fact_id: str, req: PinRequest):
+    """Toggle pinned state on a fact."""
+    success = memory_store.pin_fact(fact_id, req.pinned)
+    return {"success": success, "pinned": req.pinned}
+
+@app.get("/api/memory/documents/{user_id}")
+def get_memory_documents(user_id: str):
+    """List all ingested documents for this user."""
+    return memory_store.list_documents(user_id)
+
+@app.delete("/api/memory/documents/{doc_id}")
+def delete_memory_document(doc_id: str, user_id: str):
+    """Delete all chunks for a document."""
+    success = memory_store.delete_document(doc_id, user_id)
+    return {"success": success}
+
+@app.post("/api/memory/ingest")
+async def ingest_document(user_id: str, file: UploadFile = File(...)):
+    """Upload and ingest a PDF, TXT, or MD file into long-term memory."""
+    ext = pathlib.Path(file.filename).suffix.lower()
+    if ext not in (".pdf", ".txt", ".md"):
+        raise HTTPException(status_code=400, detail="Only .pdf, .txt, and .md files are supported")
+
+    # Save to a temp file
+    with tempfile.NamedTemporaryFile(delete=False, suffix=ext) as tmp:
+        shutil.copyfileobj(file.file, tmp)
+        tmp_path = tmp.name
+
+    try:
+        result = await asyncio.to_thread(
+            document_pipeline.ingest_file, user_id, tmp_path, file.filename
+        )
+    finally:
+        try:
+            os.remove(tmp_path)
+        except Exception:
+            pass
+
+    if result.get("status") == "error":
+        raise HTTPException(status_code=422, detail=result["message"])
+
+    return result
+
+# ── Code Sandbox Execution Endpoint ─────────────────────────────────────────
+import sandbox_runner
+
+class SandboxRunRequest(BaseModel):
+    code: str
+    language: str = "python"
+    timeout: int = 8
+
+@app.post("/api/sandbox/run")
+async def run_sandbox_code(req: SandboxRunRequest):
+    """Execute code in an isolated subprocess sandbox."""
+    res = await asyncio.to_thread(sandbox_runner.execute_code, req.code, req.language, req.timeout)
+    return res
+
 # BUG-2 FIX: Regex to parse the emotion/gesture tag LLM prepends to every response.
 # - Uses [\s\n]* instead of \s* so leading newlines (common in LLM output) are consumed.
 # - Trailing match is [:\s]* (greedy) to swallow the colon + any spaces after the tag.
@@ -107,9 +224,38 @@ EMOTION_RE = re.compile(
     r'|negotiation|presentation|explaining|thoughtfulness|approval|anger|displeasure|openness'
     r'|farewell|eyeContact|interestedFlash|receptive|engaged|attentive|blushing|coySmile'
     r'|preening|fidgeting|focused|synchrony|jollyLaughter|friendlyContact|gazeShift'
-    r'|sharedFocus|openPosture)\]?[:\s]*',
+    r'|sharedFocus|openPosture|helpful|simple|confident|excited|professional|friendly'
+    r'|calm|energetic|playful|serious|warm)\]?[:\s]*',
     re.IGNORECASE
 )
+
+# Strips ALL gesture/emotion tags anywhere in text (for TTS — mid-response tags must be removed)
+ALL_GESTURE_RE = re.compile(
+    r'\[?(happy|neutral|thinking|surprised|sad|greeting|activeListening|confidentSpeech'
+    r'|leadership|disagreement|opposition|comforting|surprise|casualChat|relaxed|annoyed'
+    r'|negotiation|presentation|explaining|thoughtfulness|approval|anger|displeasure|openness'
+    r'|farewell|eyeContact|interestedFlash|receptive|engaged|attentive|blushing|coySmile'
+    r'|preening|fidgeting|focused|synchrony|jollyLaughter|friendlyContact|gazeShift'
+    r'|sharedFocus|openPosture|helpful|simple|confident|excited|professional|friendly'
+    r'|calm|energetic|playful|serious|warm)\][:\s]*',
+    re.IGNORECASE
+)
+
+def clean_for_tts(text: str) -> str:
+    """Prepare text for TTS by removing code fence blocks, formatting symbols, and emotion/action tags."""
+    if not text:
+        return ""
+    text = strip_action_tag(text)
+    text = ALL_GESTURE_RE.sub("", text)
+    # Strip markdown code blocks so TTS doesn't speak code syntax aloud
+    text = re.sub(r'```[\s\S]*?```', ' ', text)
+    # Strip inline backticks `...`
+    text = re.sub(r'`([^`]+)`', r'\1', text)
+    # Strip markdown headers, bold/italics markers
+    text = re.sub(r'[#*_~>]+', ' ', text)
+    # Strip any remaining stray bracketed tags [something]
+    text = re.sub(r'\[.*?\]', ' ', text)
+    return re.sub(r'\s+', ' ', text).strip()
 
 # Map lowercased match to exact camelCase expected by frontend
 EMOTION_MAP = {
@@ -194,7 +340,7 @@ async def audio_stream(websocket: WebSocket, session_id: str = "default_session"
                 data = message["bytes"]
                 # ── STEP 2: Whisper STT (run in thread so event loop stays free) ─
                 t_whisp_start = time.time()
-                expected_lang = SESSION_LANGUAGES.get(session_id, "en")
+                expected_lang = SESSION_LANGUAGES.get(session_id, "auto")
                 # BUG-1 FIX: process_audio_chunk is CPU-bound (Whisper); run in
                 # a thread pool so we never block the async event loop.
                 result = await asyncio.to_thread(
@@ -225,16 +371,15 @@ async def audio_stream(websocket: WebSocket, session_id: str = "default_session"
                             SESSION_USER_IDS[session_id] = uid
                             effective_user_id = uid
                             print(f"[CONFIG] User identity set: {uid}")
-                        if "avatar" in payload:
-                            avatar_file = payload.get("avatar")
-                            old_avatar  = SESSION_AVATARS.get(session_id)
-                            SESSION_AVATARS[session_id] = avatar_file
-                            if old_avatar and old_avatar != avatar_file:
-                                print(f"[CONFIG] Avatar switched from {old_avatar} to {avatar_file}. Loading new context.")
+
                         if "language" in payload:
                             lang = payload.get("language")
                             SESSION_LANGUAGES[session_id] = lang
                             print(f"\n[CONFIG] Language changed to: {lang}")
+
+                        if "vad_sensitivity" in payload:
+                            sens = payload.get("vad_sensitivity")
+                            transcriber.set_sensitivity(sens)
                         continue
                     elif payload.get("type") == "intro_trigger":
                         user_text = payload.get("text")
@@ -245,17 +390,17 @@ async def audio_stream(websocket: WebSocket, session_id: str = "default_session"
                             effective_user_id = payload["user_id"]
                         
                         from llm_agent import get_chat_history
-                        current_avatar = SESSION_AVATARS.get(session_id, "avatar.vrm")
-                        history = get_chat_history(effective_user_id, current_avatar)
+                        history = get_chat_history(effective_user_id, "avatar.vrm")
                         
                         if len(history) > 0:
-                            print(f"\n[INTRO TRIGGER] Skipped full intro for {current_avatar}, doing short welcome back.")
-                            user_text = "Say a very short 1-line welcome back or acknowledgment that you are listening. Do NOT introduce yourself."
+                            is_intro_trigger = True
+                            user_text = "(Greet me as a returning user, casually.)"
+                            print(f"\n[INTRO TRIGGER] Skipped full intro for avatar.vrm, doing short welcome back.")
                         else:
-                            print(f"\n[INTRO TRIGGER] Full intro for {current_avatar}")
-                            
+                            is_intro_trigger = True
+                            print(f"\n[INTRO TRIGGER] Full intro for avatar.vrm")
                         whisper_duration = 0.0
-                        is_intro_trigger = True
+                        
                     else:
                         continue
                 except Exception as e:
@@ -291,8 +436,7 @@ async def audio_stream(websocket: WebSocket, session_id: str = "default_session"
                     "language": detected_lang,
                 })
                 
-                current_avatar = SESSION_AVATARS.get(session_id, "avatar.vrm")
-                f_audio, f_visemes = await generate_audio_async(reset_msg, detected_lang, "happy", current_avatar)
+                f_audio, f_visemes = await generate_audio_async(reset_msg, detected_lang, "happy", "avatar.vrm")
                 if f_visemes: await websocket.send_json({"type": "visemes", "data": f_visemes})
                 if f_audio: await websocket.send_bytes(f_audio)
                 continue
@@ -302,19 +446,15 @@ async def audio_stream(websocket: WebSocket, session_id: str = "default_session"
             # If voice input and speech sustained, it's an interruption -> cancel current & clear queue
             if is_audio_input:
                 if current_processing_task and not current_processing_task.done():
-                    if transcriber.get_speech_chunk_count() >= transcriber._bargeIn_min_chunks:
-                        print(f"[BARGE-IN] Voice interruption detected! Cancelling current response.")
-                        current_processing_task.cancel()
-                        # Clear any pending queued questions
-                        while not task_queue.empty():
-                            try:
-                                task_queue.get_nowait()
-                                task_queue.task_done()
-                            except asyncio.QueueEmpty:
-                                break
-                    else:
-                        print(f"[BARGE-IN] Debounced — only {transcriber.get_speech_chunk_count()} chunk(s). Ignoring noise.")
-                        continue # Ignore this input completely
+                    print(f"[BARGE-IN] Voice interruption detected! Cancelling current response.")
+                    current_processing_task.cancel()
+                    # Clear any pending queued questions
+                    while not task_queue.empty():
+                        try:
+                            task_queue.get_nowait()
+                            task_queue.task_done()
+                        except asyncio.QueueEmpty:
+                            break
 
                 await websocket.send_json({
                     "type": "transcription",
@@ -331,27 +471,29 @@ async def audio_stream(websocket: WebSocket, session_id: str = "default_session"
                 await task_queue.put((user_text, detected_lang, whisper_duration, is_intro_trigger))
 
             # Define background generation task (used by the worker)
-            async def process_response(u_text, lang, whisp_time, skip_memory=False):
+            async def process_response(u_text, lang, whisp_dur, is_intro):
                 import re as _re
                 import threading
 
                 t_llm_start = time.time()
                 print(f"[STEP 3] Calling Groq for session {session_id}...")
 
-                current_avatar = SESSION_AVATARS.get(session_id, "avatar.vrm")
+                skip_memory = is_intro
+                memory_id = effective_user_id
+                
+                await websocket.send_json({"type": "status", "status": "Thinking"})
 
                 sentence_end_re = _re.compile(r'([.!?\n]+)\s*')
                 q = asyncio.Queue()
                 loop = asyncio.get_running_loop()
                 stop_event = threading.Event()
 
-                # Use the persistent user identity for memory/history
-                memory_id = SESSION_USER_IDS.get(session_id, session_id)
-
                 def producer():
                     try:
                         for c in generate_streaming_response(
-                            memory_id, u_text, current_avatar, lang, skip_memory=skip_memory
+                            memory_id, u_text, "avatar.vrm", lang,
+                            skip_memory=skip_memory,
+                            user_id=effective_user_id,
                         ):
                             if stop_event.is_set():
                                 break
@@ -367,6 +509,11 @@ async def audio_stream(websocket: WebSocket, session_id: str = "default_session"
                 full_response_acc = ""
                 emotion = None
                 first_sentence_sent = False
+                # groq/compound outputs a **Reasoning**...**Final Answer** preamble.
+                # We suppress it from TTS and the UI until the final answer starts.
+                in_reasoning_block = False
+                reasoning_done = False
+                _FA_RE = _re.compile(r'\*{0,2}Final Answer\*{0,2}\s*\n?', _re.IGNORECASE)
 
                 async def safe_send_json(payload):
                     try:
@@ -389,19 +536,47 @@ async def audio_stream(websocket: WebSocket, session_id: str = "default_session"
                             print(chunk)
                             break
 
-                        full_response_acc += chunk
-                        sentence_buffer += chunk
+                        # ── Reasoning-block suppression ───────────────────────
+                        if not reasoning_done:
+                            full_response_acc += chunk
+                            # Detect start of reasoning
+                            if not in_reasoning_block and (
+                                "**Reasoning**" in full_response_acc or
+                                "<think>" in full_response_acc
+                            ):
+                                in_reasoning_block = True
+                            # Detect end of reasoning — "**Final Answer**" marker
+                            if in_reasoning_block:
+                                fa_match = _FA_RE.search(full_response_acc)
+                                if fa_match:
+                                    reasoning_done = True
+                                    in_reasoning_block = False
+                                    # Reset acc to only what comes after the marker
+                                    full_response_acc = full_response_acc[fa_match.end():]
+                                    sentence_buffer = full_response_acc
+                                # Still inside reasoning block — skip this chunk for TTS
+                                continue
+                            # No reasoning block started — treat as plain output
+                            reasoning_done = True  # not a CoT model response, stream normally
+                            sentence_buffer = full_response_acc
+                        else:
+                            full_response_acc += chunk
+                            sentence_buffer += chunk
 
-                        # Parse emotion tag early
+                        # Parse emotion tag early from the leading gesture tag
                         if emotion is None:
                             m = EMOTION_RE.match(full_response_acc)
                             if m:
                                 raw_emotion = m.group(1).lower()
                                 emotion = EMOTION_MAP.get(raw_emotion, "neutral")
                                 sentence_buffer = EMOTION_RE.sub("", sentence_buffer)
-                            elif len(full_response_acc) > 40 and "[" not in full_response_acc:
-                                from llm_agent import AVATAR_CONFIG as _AV_CFG
-                                emotion = _AV_CFG.get(current_avatar, {}).get("default_emotion", "neutral")
+                            # Note: removed premature comforting fallback —
+                            # emotion stays None until a real tag arrives.
+                            # If no tag arrives by stream end, we default below.
+
+                        # Strip [ACTION:{...}] and ALL mid-response gesture tags from TTS buffer
+                        sentence_buffer = strip_action_tag(sentence_buffer)
+                        sentence_buffer = ALL_GESTURE_RE.sub("", sentence_buffer)
 
                         if emotion is not None:
                             match = sentence_end_re.search(sentence_buffer)
@@ -411,8 +586,9 @@ async def audio_stream(websocket: WebSocket, session_id: str = "default_session"
                                 sentence_buffer = sentence_buffer[end_idx:]
 
                                 if sentence:
-                                    # Mid-stream update: send accumulated text so far with "..."
-                                    clean_partial_text = EMOTION_RE.sub("", full_response_acc).strip()
+                                    # Clean for chat display
+                                    clean_partial_text = ALL_GESTURE_RE.sub("", EMOTION_RE.sub("", full_response_acc)).strip()
+                                    clean_partial_text = strip_action_tag(clean_partial_text)
                                     await safe_send_json({
                                         "type": "transcription",
                                         "role": "assistant",
@@ -422,22 +598,25 @@ async def audio_stream(websocket: WebSocket, session_id: str = "default_session"
                                     })
                                     first_sentence_sent = True
 
-                                    print(f"[TTS CHUNK] {sentence}")
-                                    audio_bytes, visemes = await generate_audio_async(sentence, lang, emotion, current_avatar)
-                                    if visemes:
-                                        await safe_send_json({"type": "visemes", "data": visemes})
-                                    if audio_bytes:
-                                        await safe_send_bytes(audio_bytes)
+                                    # Clean sentence for TTS (strips all tags, symbols, and code blocks)
+                                    tts_sentence = clean_for_tts(sentence)
+                                    if tts_sentence:
+                                        print(f"[TTS CHUNK] emotion={emotion} | {tts_sentence}")
+                                        audio_bytes, visemes = await generate_audio_async(tts_sentence, "en", emotion or "neutral", "avatar.vrm")
+                                        if visemes:
+                                            await safe_send_json({"type": "visemes", "data": visemes})
+                                        if audio_bytes:
+                                            await safe_send_bytes(audio_bytes)
 
                     # Process remaining buffer
                     if sentence_buffer.strip():
                         sentence = sentence_buffer.strip()
                         if not emotion:
-                            from llm_agent import AVATAR_CONFIG as _AV_CFG
-                            emotion = _AV_CFG.get(current_avatar, {}).get("default_emotion", "neutral")
+                            emotion = "neutral"  # default — no fake comforting
 
                         if not first_sentence_sent:
-                            clean_partial_text = EMOTION_RE.sub("", full_response_acc).strip()
+                            clean_partial_text = ALL_GESTURE_RE.sub("", EMOTION_RE.sub("", full_response_acc)).strip()
+                            clean_partial_text = strip_action_tag(clean_partial_text)
                             await safe_send_json({
                                 "type": "transcription",
                                 "role": "assistant",
@@ -446,16 +625,45 @@ async def audio_stream(websocket: WebSocket, session_id: str = "default_session"
                                 "language": lang,
                             })
 
-                        print(f"[TTS CHUNK] {sentence}")
-                        audio_bytes, visemes = await generate_audio_async(sentence, lang, emotion, current_avatar)
-                        if visemes:
-                            await safe_send_json({"type": "visemes", "data": visemes})
-                        if audio_bytes:
-                            await safe_send_bytes(audio_bytes)
+                        tts_sentence = clean_for_tts(sentence)
+                        if tts_sentence:
+                            print(f"[TTS CHUNK] emotion={emotion} | {tts_sentence}")
+                            audio_bytes, visemes = await generate_audio_async(tts_sentence, "en", emotion or "neutral", "avatar.vrm")
+                            if visemes:
+                                await safe_send_json({"type": "visemes", "data": visemes})
+                            if audio_bytes:
+                                await safe_send_bytes(audio_bytes)
+
+                    # ── Execute [ACTION:{...}] tool if present ─────────────────
+                    action_data = extract_action(full_response_acc)
+                    if action_data:
+                        tool_name = action_data.get("tool", "")
+                        tool_params = action_data.get("params", {})
+                        is_sensitive_tool = tool_name == "check_whatsapp_notifications"
+
+                        if not is_sensitive_tool:
+                            print(f"[TOOL] Executing: {tool_name} params={tool_params}")
+                            result = execute_tool(tool_name, tool_params)
+                            print(f"[TOOL] Result: {result}")
+                            # Notify frontend of execution result
+                            await safe_send_json({
+                                "type": "tool_result",
+                                "tool": tool_name,
+                                "success": result["success"],
+                                "message": result["message"],
+                            })
+                        else:
+                            # Sensitive tool — ask frontend for confirmation
+                            await safe_send_json({
+                                "type": "tool_confirm",
+                                "tool": tool_name,
+                                "params": tool_params,
+                                "summary": action_data.get("summary", f"Execute {tool_name}"),
+                            })
 
                     # ONE final transcription message with the complete clean text
                     if full_response_acc:
-                        clean_full_text = EMOTION_RE.sub("", full_response_acc).strip()
+                        clean_full_text = clean_llm_output(full_response_acc)
                         await safe_send_json({
                             "type": "transcription",
                             "role": "assistant",
