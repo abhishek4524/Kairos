@@ -104,7 +104,7 @@ export default function AdminDashboard({
       
       const avatarsData = await avatarsRes.json();
       setAvatars(avatarsData.map(item => ({
-        name: item.avatar_id === 'avatar.vrm' ? 'Kavya' : item.avatar_id,
+        name: item.avatar_id === 'avatar.vrm' ? 'Kairos' : item.avatar_id,
         value: item.count
       })));
 

@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
+import { neuralStateMachine } from '../neural/neuralStateMachine';
 
 // Resample helper
 function downsampleBuffer(input, fromRate, toRate = 16000) {
@@ -33,7 +34,6 @@ export function useAudioStreaming({
   const sourceRef = useRef(null);
   const gainRef = useRef(null);
   const streamRef = useRef(null);
-  const visemesRef = useRef(null);
   const isRecordingRef = useRef(false);
   
   const currentAudioSourceRef = useRef(null);
@@ -76,8 +76,7 @@ export function useAudioStreaming({
     if (isPlayingAudioRef.current || audioQueueRef.current.length === 0) return;
     
     isPlayingAudioRef.current = true;
-    const { arrayBuffer, visemes } = audioQueueRef.current.shift();
-    visemesRef.current = visemes;
+    const arrayBuffer = audioQueueRef.current.shift();
 
     if (!audioCtxRef.current) {
       audioCtxRef.current = new (window.AudioContext || window.webkitAudioContext)();
@@ -97,7 +96,7 @@ export function useAudioStreaming({
       const startTime = actx.currentTime;
 
       if (callbacksRef.current.onAudioPlayEvent) {
-        callbacksRef.current.onAudioPlayEvent({ startTime, duration: buf.duration, visemes: visemesRef.current, actx, analyser });
+        callbacksRef.current.onAudioPlayEvent({ startTime, duration: buf.duration, actx, analyser });
       }
       currentAudioSourceRef.current = source;
       source.start(startTime);
@@ -105,7 +104,6 @@ export function useAudioStreaming({
       source.onended = () => {
         if (currentAudioSourceRef.current === source) {
           if (callbacksRef.current.onAudioPlayEvent) callbacksRef.current.onAudioPlayEvent(null);
-          visemesRef.current = null;
           currentAudioSourceRef.current = null;
           isPlayingAudioRef.current = false;
           
@@ -113,6 +111,7 @@ export function useAudioStreaming({
             processAudioQueue();
           } else {
             if (callbacksRef.current.onStatusChange) callbacksRef.current.onStatusChange('Idle');
+            neuralStateMachine.onCompleted();
           }
         }
       };
@@ -122,6 +121,7 @@ export function useAudioStreaming({
       if (audioQueueRef.current.length > 0) processAudioQueue();
       else {
         if (callbacksRef.current.onStatusChange) callbacksRef.current.onStatusChange('Idle');
+        neuralStateMachine.onCompleted();
       }
     }
   }, []);
@@ -168,30 +168,37 @@ export function useAudioStreaming({
         let msg;
         try { msg = JSON.parse(ev.data); } catch { return; }
 
-        if (msg.type === 'transcription') {
+        if (msg.type === 'neural_event') {
+          // Real-time Living AI Core Event Bus
+          const ev = msg.event;
+          if (ev === 'AI_PROCESSING_STARTED') neuralStateMachine.onProcessingInput();
+          else if (ev === 'AI_THINKING_STARTED') neuralStateMachine.onThinking(msg);
+          else if (ev === 'RAG_SEARCH_COMPLETED') neuralStateMachine.onRagResultsFound(msg.results || []);
+          else if (ev === 'AI_GENERATION_STARTED') neuralStateMachine.onGenerating(0);
+          else if (ev === 'AI_GENERATION_TOKEN') neuralStateMachine.onGenerating(msg.tokenCount || 1);
+          else if (ev === 'TOOL_STARTED') neuralStateMachine.onToolExecution(msg.toolName, msg.params);
+          else if (ev === 'TOOL_COMPLETED') neuralStateMachine.onToolCompleted(msg.toolName, msg.success, msg.message);
+          else if (ev === 'AI_COMPLETED') {
+            // Only transition to completed/idle if audio queue has finished playing
+            if (!isPlayingAudioRef.current && audioQueueRef.current.length === 0) {
+              neuralStateMachine.onCompleted();
+            }
+          }
+          else if (ev === 'AI_ERROR') neuralStateMachine.onError(msg.error);
+        } else if (msg.type === 'transcription') {
           if (callbacksRef.current.onMessageReceived) callbacksRef.current.onMessageReceived(msg);
           if (msg.role === 'user') {
+            neuralStateMachine.onProcessingInput();
             if (callbacksRef.current.onStatusChange) callbacksRef.current.onStatusChange('Thinking');
-            if (callbacksRef.current.onEmotionChange) callbacksRef.current.onEmotionChange('thinking');
-            const GREETING_RE = /\b(hi|hello|hey|namaste|hola|salut|salam|yo|howdy|namaskar|hiya)\b/i;
-            if (GREETING_RE.test(msg.text)) {
-              if (callbacksRef.current.onGestureChange) callbacksRef.current.onGestureChange('greeting');
-              setTimeout(() => { if (callbacksRef.current.onGestureChange) callbacksRef.current.onGestureChange(null); }, 4000);
-            } else {
-              if (callbacksRef.current.onGestureChange) callbacksRef.current.onGestureChange(null);
-            }
-          } else if (msg.role === 'assistant') {
-            if (msg.emotion && callbacksRef.current.onEmotionChange) callbacksRef.current.onEmotionChange(msg.emotion);
           }
         } else if (msg.type === 'barge_in') {
           stopAndClearAudio();
-        } else if (msg.type === 'visemes') {
-          visemesRef.current = msg.data;
+          neuralStateMachine.onCompleted();
         }
       } else {
         if (callbacksRef.current.onStatusChange) callbacksRef.current.onStatusChange('Speaking');
-        audioQueueRef.current.push({ arrayBuffer: ev.data, visemes: visemesRef.current });
-        visemesRef.current = null;
+        neuralStateMachine.onGenerating(1);
+        audioQueueRef.current.push(ev.data);
         processAudioQueue();
       }
     };
@@ -241,6 +248,7 @@ export function useAudioStreaming({
 
       isRecordingRef.current = true;
       setIsRecording(true);
+      neuralStateMachine.onUserInputStarted('voice');
       if (callbacksRef.current.onStatusChange) callbacksRef.current.onStatusChange('Listening');
     } catch (err) {
       const msg = err.name === 'NotAllowedError' ? 'Microphone permission denied.'
@@ -276,6 +284,7 @@ export function useAudioStreaming({
     }
 
     stopAndClearAudio();
+    neuralStateMachine.onUserInputStarted('text');
     if (callbacksRef.current.onStatusChange) callbacksRef.current.onStatusChange('Thinking');
     if (callbacksRef.current.onEmotionChange) callbacksRef.current.onEmotionChange('thinking');
 

@@ -22,7 +22,7 @@ export default function SettingsModal({
   onOpenMemory
 }) {
   const [activeTab, setActiveTab] = useState('general'); // 'general' | 'voice' | 'integrations' | 'privacy'
-  const [assistantName, setAssistantName] = useState(() => localStorage.getItem('kavya_assistant_name') || 'Kavya');
+  const [assistantName, setAssistantName] = useState(() => localStorage.getItem('kavya_assistant_name') || 'Kairos');
   const [autoGreeting, setAutoGreeting] = useState(() => localStorage.getItem('kavya_auto_greeting') !== 'false');
   
   const [integrationStatus, setIntegrationStatus] = useState({
@@ -191,15 +191,10 @@ export default function SettingsModal({
                   <h3 className="text-xs font-mono font-bold uppercase tracking-wider text-amber-300 mb-1">
                     Interface Theme
                   </h3>
-                  <p className="text-xs text-[var(--text-muted)] mb-3">Switch between dark sci-fi and soft daylight themes.</p>
-                  <div className="flex items-center gap-3">
-                    <button
-                      onClick={onThemeToggle}
-                      className="flex items-center gap-2 px-4 py-2 rounded-xl glass-panel-warm border border-[var(--border-gold-glow)] hover:border-amber-400 text-xs font-mono font-semibold text-[var(--text-main)] transition-all cursor-pointer"
-                    >
-                      {theme === 'dark' ? <Moon size={14} className="text-amber-300" /> : <Sun size={14} className="text-amber-400" />}
-                      <span>Current: {theme === 'dark' ? 'Dark Mode (Default)' : 'Light Mode'}</span>
-                    </button>
+                  <p className="text-xs text-[var(--text-muted)] mb-3">High-performance Dark Obsidian neural theme active.</p>
+                  <div className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-blue-950/40 border border-blue-800/40 w-fit text-xs font-mono text-blue-300">
+                    <Moon size={13} className="text-blue-400" />
+                    <span>Dark Mode (Fixed)</span>
                   </div>
                 </div>
 

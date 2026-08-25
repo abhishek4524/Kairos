@@ -9,7 +9,7 @@ import {
 const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:8000';
 
 const DEFAULT_SNIPPETS = {
-  python: `# Kavya Code Sandbox — Python 3
+  python: `# Kairos Code Sandbox — Python 3
 def two_sum(nums, target):
     seen = {}
     for i, num in enumerate(nums):
@@ -26,7 +26,7 @@ result = two_sum(nums, target)
 print(f"Input: nums={nums}, target={target}")
 print(f"Result indices: {result} (values: {[nums[i] for i in result]})")
 `,
-  javascript: `// Kavya Code Sandbox — Node.js
+  javascript: `// Kairos Code Sandbox — Node.js
 function twoSum(nums, target) {
   const map = new Map();
   for (let i = 0; i < nums.length; i++) {
@@ -319,7 +319,7 @@ export default function CodeSandbox({
               ) : (
                 <div className="text-slate-500 flex flex-col items-center justify-center h-full text-center space-y-2">
                   <Terminal size={32} className="opacity-30" />
-                  <p>Click "Run Code" or ask Kavya to test algorithms.</p>
+                  <p>Click "Run Code" or ask Kairos to test algorithms.</p>
                   <p className="text-[10px] opacity-70">Code executes safely in a sandboxed temporary environment.</p>
                 </div>
               )}

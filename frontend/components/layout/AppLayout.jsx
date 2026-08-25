@@ -2,7 +2,7 @@ import React, { useMemo, useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 
 import ChatPanel from '../chat/ChatPanel';
-import HeroAvatar from '../avatar/HeroAvatar';
+import HeroAICore from '../neural/HeroAICore';
 import VoiceDock from './VoiceDock';
 import ElectronTitleBar from './ElectronTitleBar';
 import AdminDashboard from '../admin/AdminDashboard';
@@ -59,49 +59,10 @@ export default function AppLayout() {
   const [sessionId, setSessionId] = useState(() => localStorage.getItem('nanban-session-id') || crypto.randomUUID());
 
   const [preferredLanguage, setPreferredLanguage] = useState(() => localStorage.getItem('nanban-language') || 'en');
-  const [theme, setTheme] = useState(() => localStorage.getItem('nanban-theme') || 'dark');
-  const [zoomLevel, setZoomLevel] = useState(() => parseFloat(localStorage.getItem('nanban-zoom-level') || '50'));
+  const theme = 'dark';
   
   const [vadSensitivity, setVadSensitivity] = useState(() => localStorage.getItem('nanban-vad-sensitivity') || 'medium');
   const [isContinuousListening, setIsContinuousListening] = useState(false);
-  const [lampOn, setLampOn] = useState(() => localStorage.getItem('nanban-room-lamp') !== 'false');
-  const [interactionPose, setInteractionPose] = useState('standing');
-  const [transientGesture, setTransientGesture] = useState(null);
-
-  // ── Contextual Gesture Detector ────────────────────────────────────────────
-  // Scans assistant response text for semantic patterns and fires a transient
-  // gesture overlay. Not forced on every message — only matching intents.
-  const detectContextualGesture = (text) => {
-    if (!text || typeof text !== 'string') return;
-    const t = text.toLowerCase();
-    const fire = (name, opts = {}) => {
-      setTransientGesture({ name, id: Date.now(), ...opts });
-    };
-    // Greetings — wave
-    if (/\b(hello|hi there|hey|namaste|good morning|good evening|good afternoon|welcome)\b/.test(t))
-      return fire('wave', { fadeIn: 0.2, hold: 1.8, fadeOut: 0.5 });
-    // Farewell — goodbye wave
-    if (/\b(bye|goodbye|see you|take care|farewell|talk soon|until next time)\b/.test(t))
-      return fire('goodbye', { fadeIn: 0.2, hold: 1.8, fadeOut: 0.5 });
-    // Positive confirmation — thumbs up
-    if (/\b(absolutely|of course|definitely|exactly right|great|perfect|well done|congratulations|that's correct)\b/.test(t))
-      return fire('thumbs_up', { fadeIn: 0.2, hold: 1.2, fadeOut: 0.4 });
-    // Pointing / referencing something on screen
-    if (/\b(look at (this|that|here)|check (this|that|here)|see here|here is|there it is|as you can see|over here)\b/.test(t))
-      return fire('point_up', { fadeIn: 0.2, hold: 1.5, fadeOut: 0.4 });
-    // Thinking / pondering
-    if (/\b(hmm|let me think|interesting|that's a good question|i'm thinking|one moment|good question)\b/.test(t))
-      return fire('chin_rub', { fadeIn: 0.3, hold: 2.0, fadeOut: 0.6 });
-    // Explaining / open palm
-    if (/\b(to explain|the reason is|basically|essentially|in other words|what (i mean|this means)|let me clarify)\b/.test(t))
-      return fire('explaining', { fadeIn: 0.3, hold: 1.5, fadeOut: 0.5 });
-    // Uncertainty / shrug
-    if (/\b(i'm not sure|i don't know|hard to say|it depends|not certain|unclear)\b/.test(t))
-      return fire('shrug', { fadeIn: 0.2, hold: 1.2, fadeOut: 0.4 });
-    // Agreement / nodding reinforcement
-    if (/\b(yes|yeah|agreed|right|correct|indeed|absolutely|totally)\b/.test(t))
-      return fire('nodding', { fadeIn: 0.15, hold: 0.8, fadeOut: 0.3 });
-  };
 
   const [messages, setMessages] = useState([]);
   const [status, setStatus] = useState('Idle');
@@ -139,56 +100,8 @@ export default function AppLayout() {
   } = useAudioStreaming({
     sessionId,
     userId,
-    selectedAvatar: 'avatar.vrm',
     preferredLanguage,
     onMessageReceived: (msg) => {
-      // Intercept Voice & Text Theme & Room Light & Chair Sit/Stand Commands
-      if (msg.role === 'user' && msg.text) {
-        const lower = msg.text.toLowerCase().trim();
-        if (/\b(switch to dark mode|dark mode on|set dark mode|enable dark mode|dark theme)\b/i.test(lower)) {
-          setTheme('dark');
-        } else if (/\b(switch to light mode|light mode on|set light mode|enable light mode|light theme)\b/i.test(lower)) {
-          setTheme('light');
-        } else if (/\b(switch theme|toggle theme|change theme)\b/i.test(lower)) {
-          setTheme(prev => prev === 'dark' ? 'light' : 'dark');
-        }
-
-        // Room Lamp / Bulb Voice & Text Commands
-        if (/\b(turn on the light|turn on the bulb|turn on the lamp|switch on the light|switch on the bulb|switch on the lamp|light on|bulb on|lamp on|roshni on|batti on|roshni chalu|batti chalu)\b/i.test(lower)) {
-          setLampOn(true);
-        } else if (/\b(turn off the light|turn off the bulb|turn off the lamp|switch off the light|switch off the bulb|switch off the lamp|light off|bulb off|lamp off|roshni band|batti band)\b/i.test(lower)) {
-          setLampOn(false);
-        } else if (/\b(toggle the light|toggle the lamp|toggle the bulb|toggle light|toggle lamp|toggle bulb)\b/i.test(lower)) {
-          setLampOn(prev => !prev);
-        }
-
-        // Chair Sit & Stand Voice & Text Commands
-        if (/\b(sit on the chair|sit down on the chair|sit on chair|sit down|please sit|baith jao|kursi par baith jao|take a seat)\b/i.test(lower)) {
-          setInteractionPose('seated');
-        } else if (/\b(stand up from the chair|stand up|get up|please stand|khade ho jao)\b/i.test(lower)) {
-          setInteractionPose('standing');
-        }
-
-        // Read Books & Put Book Down Voice & Text Commands
-        if (/\b(read a book|read the book|read books|go read|kitaab padho|kitab padho|pick up a book|pick up the book|go to the bookshelf)\b/i.test(lower)) {
-          setInteractionPose('reading');
-        } else if (/\b(put the book down|put book down|stop reading|done reading|kitaab rakh do|kitab rakh do)\b/i.test(lower)) {
-          setInteractionPose('standing');
-        }
-
-        // Jump Voice & Text Commands (transient — resets after animation)
-        if (/\b(jump|koodna|kudo|please jump|do a jump|jump please)\b/i.test(lower)) {
-          setInteractionPose('jump');
-          // Reset after animation completes (~750ms)
-          setTimeout(() => setInteractionPose(prev => prev === 'jump' ? 'standing' : prev), 850);
-        }
-      }
-
-      // ── Contextual gesture detection on assistant responses ──
-      if (msg.role === 'assistant' && msg.text) {
-        detectContextualGesture(msg.text);
-      }
-
       setMessages(prev => {
         if (msg.role === 'assistant' && prev.length > 0 && prev[prev.length - 1].role === 'assistant') {
           const updated = [...prev];
@@ -234,9 +147,6 @@ export default function AppLayout() {
   // Persist State
   useEffect(() => { localStorage.setItem('nanban-session-id', sessionId); }, [sessionId]);
   useEffect(() => { localStorage.setItem('nanban-language', preferredLanguage); }, [preferredLanguage]);
-  useEffect(() => { localStorage.setItem('nanban-theme', theme); }, [theme]);
-  useEffect(() => { localStorage.setItem('nanban-zoom-level', zoomLevel.toString()); }, [zoomLevel]);
-  useEffect(() => { localStorage.setItem('nanban-room-lamp', lampOn.toString()); }, [lampOn]);
 
   // Load History (Initial)
   useEffect(() => {
@@ -246,15 +156,14 @@ export default function AppLayout() {
       .catch(() => {});
   }, [userId]);
 
-  const toggleTheme = () => setTheme(prev => prev === 'dark' ? 'light' : 'dark');
   const toggleMic = () => isRecording ? stopRecording() : startRecording();
 
-  const activeAvatarObj = { name: 'Kavya', accent: '#06b6d4' };
+  const activeAvatarObj = { name: 'Kairos', accent: '#3b82f6' };
   const userRapportEnergy = useMemo(() => deriveUserRapportEnergy(messages), [messages]);
 
   return (
     <div
-      className={`app-container flex flex-col md:flex-row w-screen overflow-hidden ${theme}`}
+      className="app-container flex flex-col md:flex-row w-screen overflow-hidden dark"
       style={{ height: '100vh', paddingTop: TITLEBAR_HEIGHT }}
     >
       {/* Custom sci-fi title bar — only renders in Electron */}
@@ -315,7 +224,7 @@ export default function AppLayout() {
         )}
       </AnimatePresence>
 
-      {/* Character Codex / About Kavya Modal */}
+      {/* Character Codex / About Kairos Modal */}
       <AnimatePresence>
         {isAboutOpen && (
           <AboutKavya 
@@ -380,27 +289,14 @@ export default function AppLayout() {
         )}
       </AnimatePresence>
 
-      {/* 2. Middle: Hero Avatar View */}
-      <HeroAvatar 
-        audioPlayEvent={audioPlayEvent}
-        emotion={emotion}
-        gestureOverride={gestureOverride}
-        zoomLevel={zoomLevel}
-        onZoomChange={setZoomLevel}
-        theme={theme}
-        userRapportEnergy={userRapportEnergy}
-        status={status}
-        lampOn={lampOn}
-        onToggleLamp={() => setLampOn(prev => !prev)}
-        interactionPose={interactionPose}
-        onToggleSit={() => setInteractionPose(prev => prev === 'seated' ? 'standing' : 'seated')}
-        onToggleRead={() => setInteractionPose(prev => prev === 'reading' ? 'standing' : 'reading')}
-        onJump={() => {
-          setInteractionPose('jump');
-          setTimeout(() => setInteractionPose(prev => prev === 'jump' ? 'standing' : prev), 850);
-        }}
-        transientGesture={transientGesture}
-      />
+      {/* 2. Middle: Living AI Core 3D Neural View — z-0 so overlays are above, pointer-events-auto for canvas interaction */}
+      <div className="relative flex-1 h-full z-0 pointer-events-auto">
+        <HeroAICore 
+          audioPlayEvent={audioPlayEvent}
+          userId={userId}
+          qualityTier="high"
+        />
+      </div>
 
       {/* 3. Right: Conversation Panel (Desktop standard, Mobile bottom sheet) */}
       <div className={`
@@ -424,8 +320,7 @@ export default function AppLayout() {
           activeAvatar={activeAvatarObj}
           preferredLanguage={preferredLanguage}
           onLanguageChange={setPreferredLanguage}
-          theme={theme}
-          onThemeToggle={toggleTheme}
+          theme="dark"
           onHistoryClick={() => setIsHistoryOpen(!isHistoryOpen)}
           onDashboardClick={() => setIsDashboardOpen(true)}
           onAboutClick={() => setIsAboutOpen(true)}
@@ -474,7 +369,7 @@ export default function AppLayout() {
 
       {/* Telemetry Footer watermark */}
       <div className="absolute bottom-1 left-1/2 -translate-x-1/2 z-10 text-[9px] font-mono text-[var(--text-subtle)] opacity-40 pointer-events-none select-none tracking-widest uppercase">
-        KAVYA NEURAL WORKSPACE // SECURE LOCAL MEMORY
+        KAIROS NEURAL WORKSPACE // SECURE LOCAL MEMORY
       </div>
 
     </div>

@@ -1,7 +1,8 @@
 import React, { useMemo, useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import AvatarCanvas from '../../AvatarCanvas';
-import { Maximize2, Minimize2, Heart, Sparkles, Flame, Lightbulb, Armchair, BookOpen, Zap } from 'lucide-react';
+import LivingAICoreCanvas from '../../neural/LivingAICoreCanvas';
+import { Maximize2, Minimize2, Heart, Sparkles, Flame, Lightbulb, Armchair, BookOpen, Zap, Brain, User } from 'lucide-react';
 
 const IDLE_MICRO_GESTURES = [
   'head_tilt',
@@ -30,8 +31,18 @@ export default function HeroAvatar({
   onToggleSit,
   onToggleRead,
   onJump,
-  transientGesture = null
+  transientGesture = null,
+  userId = 'default_user',
 }) {
+  const [viewMode, setViewMode] = useState(() => {
+    return localStorage.getItem('kavya-view-mode') || 'avatar';
+  });
+
+  const handleSetViewMode = (mode) => {
+    setViewMode(mode);
+    localStorage.setItem('kavya-view-mode', mode);
+  };
+
   const [idleMicroGesture, setIdleMicroGesture] = useState(null);
   const [idleMicroEmotion, setIdleMicroEmotion] = useState(null);
 
@@ -91,6 +102,18 @@ export default function HeroAvatar({
     { id: 11, left: '40%', top: '92%', size: 5, delay: '8s', duration: '15s' },
     { id: 12, left: '78%', top: '66%', size: 3, delay: '10s', duration: '20s' },
   ], []);
+
+  if (viewMode === 'core') {
+    return (
+      <div className="relative flex-1 flex flex-col items-center justify-center overflow-hidden w-full h-full bg-[#02040a]">
+        <LivingAICoreCanvas
+          audioPlayEvent={audioPlayEvent}
+          userId={userId}
+          onSwitchToAvatar={() => handleSetViewMode('avatar')}
+        />
+      </div>
+    );
+  }
 
   return (
     <div className="relative flex-1 flex flex-col items-center justify-center overflow-hidden w-full h-full">
@@ -286,8 +309,18 @@ export default function HeroAvatar({
         </div>
       </motion.div>
 
-      {/* Floating Controls (Top-Right: Sit Switch + Lamp Switch + Zoom) */}
+      {/* Floating Controls (Top-Right: AI Core Switch + Sit Switch + Lamp Switch + Zoom) */}
       <div className="absolute top-4 right-4 md:top-6 md:right-6 z-20 flex items-center gap-2 md:gap-3">
+        {/* Living AI Core View Mode Switcher */}
+        <button
+          onClick={() => handleSetViewMode('core')}
+          title="Switch to 3D Living AI Core (Neural Brain Visualization)"
+          className="flex items-center gap-1.5 px-3 py-2 rounded-full transition-all duration-300 border text-[11px] font-mono cursor-pointer shadow-lg bg-cyan-950/40 border-cyan-500/50 text-cyan-300 hover:bg-cyan-500/25 hover:border-cyan-400 shadow-[0_0_15px_rgba(0,240,255,0.25)]"
+        >
+          <Brain size={13} className="text-cyan-400 animate-pulse" />
+          <span className="font-semibold hidden sm:inline">AI CORE</span>
+        </button>
+
         {/* Sit on Chair Interactive Toggle Button */}
         {onToggleSit && (
           <button

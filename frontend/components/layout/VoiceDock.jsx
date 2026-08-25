@@ -114,7 +114,7 @@ export default function VoiceDock({
         <button
           type="button"
           onClick={onToggleContinuousListening}
-          title={isContinuousListening ? "Continuous Listening: ON (Kavya will listen automatically)" : "Continuous Listening: OFF"}
+          title={isContinuousListening ? "Continuous Listening: ON (Kairos will listen automatically)" : "Continuous Listening: OFF"}
           className={`shrink-0 w-11 h-11 md:w-12 md:h-12 rounded-full flex items-center justify-center transition-all cursor-pointer ${
             isContinuousListening
               ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/60 shadow-[0_0_20px_rgba(16,185,129,0.4)]'

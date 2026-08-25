@@ -60,7 +60,7 @@ export default function ElectronTitleBar() {
           color: 'rgba(241,245,249,0.75)',
           fontFamily: "'Space Grotesk', system-ui, sans-serif",
         }}>
-          KAVYA // PERSONAL AI ASSISTANT
+          KAIROS // PERSONAL AI ASSISTANT
         </span>
       </div>
 

@@ -4,6 +4,7 @@ import {
   X, Brain, FileText, Pin, PinOff, Trash2, Upload, RefreshCw,
   Clock, AlertCircle, CheckCircle, BookOpen, Sparkles, Database, ChevronDown
 } from 'lucide-react';
+import { neuralStateMachine } from '../../neural/neuralStateMachine';
 
 const API = import.meta.env.VITE_API_URL || 'http://localhost:8000';
 
@@ -135,6 +136,7 @@ export default function MemoryPanel({ onClose, userId, theme = 'dark' }) {
   const handleDeleteFact = async (factId) => {
     await fetch(`${API}/api/memory/facts/${encodeURIComponent(factId)}`, { method: 'DELETE' });
     setFacts(prev => prev.filter(f => f.id !== factId));
+    neuralStateMachine.onMemoryUpdate('deleted');
   };
 
   const handleTogglePin = async (factId, pinned) => {
@@ -144,12 +146,14 @@ export default function MemoryPanel({ onClose, userId, theme = 'dark' }) {
       body: JSON.stringify({ pinned }),
     });
     setFacts(prev => prev.map(f => f.id === factId ? { ...f, pinned } : f));
+    neuralStateMachine.onMemoryUpdate('updated');
   };
 
   const handleDeleteDoc = async (docId) => {
     await fetch(`${API}/api/memory/documents/${encodeURIComponent(docId)}?user_id=${encodeURIComponent(userId)}`, { method: 'DELETE' });
     setDocuments(prev => prev.filter(d => d.doc_id !== docId));
     setFacts(prev => prev.filter(f => f.source !== docId));
+    neuralStateMachine.onMemoryUpdate('deleted');
   };
 
   const handleUpload = async (file) => {
@@ -165,6 +169,7 @@ export default function MemoryPanel({ onClose, userId, theme = 'dark' }) {
 
     setUploadStatus('uploading');
     setUploadMsg(`Ingesting "${file.name}"...`);
+    neuralStateMachine.onRagIngestion(file.name, 6);
 
     const formData = new FormData();
     formData.append('file', file);
@@ -178,14 +183,17 @@ export default function MemoryPanel({ onClose, userId, theme = 'dark' }) {
       if (res.ok) {
         setUploadStatus('success');
         setUploadMsg(`✓ Ingested "${data.doc_name}" — ${data.chunk_count} chunks stored`);
+        neuralStateMachine.onRagIngestion(data.doc_name, data.chunk_count);
         await refresh();
       } else {
         setUploadStatus('error');
         setUploadMsg(data.detail || 'Ingestion failed');
+        neuralStateMachine.onError(data.detail || 'Ingestion failed');
       }
     } catch (e) {
       setUploadStatus('error');
       setUploadMsg('Upload failed — is the backend running?');
+      neuralStateMachine.onError('Upload failed');
     }
     setTimeout(() => setUploadStatus(null), 5000);
   };
@@ -211,7 +219,7 @@ export default function MemoryPanel({ onClose, userId, theme = 'dark' }) {
               <Brain size={18} className="text-white" />
             </div>
             <div>
-              <h1 className="text-base font-bold font-mono tracking-wider text-[var(--text-main)]">KAVYA // LONG-TERM MEMORY</h1>
+              <h1 className="text-base font-bold font-mono tracking-wider text-[var(--text-main)]">KAIROS // LONG-TERM MEMORY</h1>
               <p className="text-[11px] font-mono text-[var(--text-muted)]">
                 {facts.length} facts · {documents.length} documents · ChromaDB
               </p>
@@ -293,7 +301,7 @@ export default function MemoryPanel({ onClose, userId, theme = 'dark' }) {
                 <div className="text-center py-16 text-[var(--text-muted)] font-mono text-sm glass-panel-warm rounded-3xl border border-[var(--border-gold-glow)] p-8">
                   <Brain size={40} className="mx-auto mb-3 text-amber-400/40" />
                   <p className="text-[var(--text-muted)]">No memories yet.</p>
-                  <p className="text-xs mt-1 text-[var(--text-subtle)]">Start a conversation — Kavya will automatically extract and remember facts about you.</p>
+                  <p className="text-xs mt-1 text-[var(--text-subtle)]">Start a conversation — Kairos will automatically extract and remember facts about you.</p>
                 </div>
               ) : (
                 <div className="space-y-3">
@@ -393,7 +401,7 @@ export default function MemoryPanel({ onClose, userId, theme = 'dark' }) {
                 <div className="text-center py-10 text-[var(--text-muted)] font-mono text-sm glass-panel rounded-3xl border border-[var(--border-gold-glow)] p-8">
                   <FileText size={36} className="mx-auto mb-3 text-cyan-400/30" />
                   <p>No documents ingested yet.</p>
-                  <p className="text-xs mt-1 text-[var(--text-subtle)]">Upload PDFs, notes, or markdown files to give Kavya reference knowledge.</p>
+                  <p className="text-xs mt-1 text-[var(--text-subtle)]">Upload PDFs, notes, or markdown files to give Kairos reference knowledge.</p>
                 </div>
               ) : (
                 <div className="space-y-2.5">

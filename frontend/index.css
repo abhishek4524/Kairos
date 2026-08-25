@@ -56,50 +56,6 @@
     --radius-full: 9999px;
   }
   
-  .light {
-    /* ── Sci-Fi High-Tech Warm Light Theme ────────────────────────────── */
-    --background: #f8f6f2;
-    --background-alt: #f1ece4;
-    --surface: rgba(255, 255, 255, 0.78);
-    --surface-hover: rgba(255, 255, 255, 0.94);
-    --surface-glass: rgba(255, 255, 255, 0.88);
-    
-    --primary: #0284c7;          /* Tech Blue-Cyan */
-    --primary-hover: #0369a1;
-    --primary-glow: rgba(2, 132, 199, 0.25);
-    
-    --accent: #6d28d9;           /* Royal Violet */
-    --accent-hover: #5b21b6;
-    --accent-glow: rgba(109, 40, 217, 0.2);
-
-    --gold: #d97706;             /* Warm Amber Gold */
-    --gold-hover: #b45309;
-    --gold-glow: rgba(217, 119, 6, 0.2);
-
-    --coral: #ea580c;            /* Warm Terracotta / Coral */
-    --coral-hover: #c2410c;
-    --coral-glow: rgba(234, 88, 12, 0.2);
-
-    --maroon-brass: #78350f;
-    --brass: #b45309;
-    --brass-glow: rgba(180, 83, 9, 0.15);
-    
-    --secondary: #2563eb;
-    --success: #059669;
-    --warning: #d97706;
-    --danger: #e11d48;
-    
-    --text-main: #1c1917;
-    --text-muted: #57534e;
-    --text-subtle: #a8a29e;
-    --text-warm: #92400e;
-    
-    --border-glass: rgba(28, 25, 23, 0.08);
-    --border-glow: rgba(2, 132, 199, 0.2);
-    --border-accent-glow: rgba(109, 40, 217, 0.15);
-    --border-gold-glow: rgba(217, 119, 6, 0.25);
-    --border-warm-brass: rgba(120, 53, 15, 0.2);
-  }
 
   body {
     @apply bg-[var(--background)] text-[var(--text-main)] antialiased overflow-hidden select-none;
@@ -133,22 +89,6 @@
     border: 1px solid var(--border-gold-glow);
     border-radius: var(--radius-lg);
     box-shadow: 0 14px 44px rgba(0, 0, 0, 0.4), inset 0 1px 2px rgba(245, 197, 96, 0.12), 0 0 25px rgba(245, 197, 96, 0.05);
-  }
-
-  .light .glass-panel {
-    background: rgba(255, 255, 255, 0.82);
-    backdrop-filter: blur(20px) saturate(1.6);
-    -webkit-backdrop-filter: blur(20px) saturate(1.6);
-    border: 1px solid rgba(28, 25, 23, 0.08);
-    border-radius: var(--radius-lg);
-    box-shadow: 0 10px 30px rgba(28, 25, 23, 0.06), inset 0 1px 1px rgba(255, 255, 255, 0.9);
-  }
-
-  .light .glass-panel-warm {
-    background: linear-gradient(135deg, rgba(255, 253, 248, 0.9) 0%, rgba(254, 247, 238, 0.85) 100%);
-    border: 1px solid rgba(217, 119, 6, 0.25);
-    border-radius: var(--radius-lg);
-    box-shadow: 0 12px 36px rgba(217, 119, 6, 0.08), inset 0 1px 2px rgba(255, 255, 255, 0.95);
   }
 
   .glass-panel-interactive {
@@ -268,12 +208,6 @@
   mask-image: radial-gradient(ellipse 70% 70% at 50% 50%, black 20%, transparent 80%);
 }
 
-.light .animated-grid-bg {
-  background-image: 
-    linear-gradient(to right, rgba(2, 132, 199, 0.04) 1px, transparent 1px),
-    linear-gradient(to bottom, rgba(2, 132, 199, 0.04) 1px, transparent 1px);
-}
-
 /* Ambient Radial Glows */
 .ambient-glow {
   position: absolute;
@@ -284,11 +218,6 @@
   transition: all 1s ease-in-out;
 }
 
-.light .ambient-glow {
-  opacity: 0.25;
-  filter: blur(100px);
-}
-
 /* Avatar Vignette */
 .avatar-vignette {
   position: absolute;
@@ -296,10 +225,6 @@
   pointer-events: none;
   z-index: 10;
   background: radial-gradient(ellipse 70% 80% at 50% 45%, transparent 45%, rgba(7, 9, 19, 0.75) 100%);
-}
-
-.light .avatar-vignette {
-  background: radial-gradient(ellipse 70% 80% at 50% 45%, transparent 50%, rgba(244, 246, 251, 0.5) 100%);
 }
 
 /* ── Chat Scrollbar ─────────────────────────────────────────────────── */
@@ -315,13 +240,6 @@
 }
 .chat-scroll::-webkit-scrollbar-thumb:hover {
   background: rgba(6, 182, 212, 0.5);
-}
-
-.light .chat-scroll::-webkit-scrollbar-thumb {
-  background: rgba(2, 132, 199, 0.2);
-}
-.light .chat-scroll::-webkit-scrollbar-thumb:hover {
-  background: rgba(2, 132, 199, 0.45);
 }
 
 /* ── Mic Pulse & Thinking Animations ───────────────────────────────── */
@@ -358,12 +276,6 @@ pre.code-block {
   box-shadow: inset 0 2px 8px rgba(0, 0, 0, 0.4);
 }
 
-.light pre.code-block {
-  background: #0f172a;
-  color: #38bdf8;
-  border-color: rgba(2, 132, 199, 0.3);
-}
-
 /* ── Indian Classical Sacred Geometry & Mandala Overlay ────────────── */
 .mandala-overlay {
   position: absolute;
@@ -376,11 +288,6 @@ pre.code-block {
   animation: mandala-spin 90s linear infinite;
   mix-blend-mode: screen;
   will-change: transform;
-}
-
-.light .mandala-overlay {
-  opacity: 0.04;
-  mix-blend-mode: multiply;
 }
 
 @keyframes mandala-spin {

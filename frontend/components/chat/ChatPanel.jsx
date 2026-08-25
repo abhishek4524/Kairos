@@ -65,7 +65,7 @@ function ActionChip({ action, onApprove, onDeny, onOpenSandbox }) {
           <span>CONFIRMATION REQUIRED // {action.summary || action.tool}</span>
         </div>
         <p className="text-[11px] text-[var(--text-muted)] font-sans">
-          Kavya is requesting permission to execute: <span className="text-[var(--text-main)] font-semibold">{action.summary || action.tool}</span>.
+          Kairos is requesting permission to execute: <span className="text-[var(--text-main)] font-semibold">{action.summary || action.tool}</span>.
         </p>
         <div className="flex items-center gap-2 pt-1">
           <button
@@ -251,7 +251,7 @@ function Bubble({ role, text, emotion, activeAvatar, onOpenSandbox }) {
             isThoughtful ? 'text-violet-300' : 
             'text-[var(--text-subtle)]'
           }`}>
-            {emotion || (isWarm ? 'Warm' : isTask ? 'Task' : 'Kavya')}
+            {emotion || (isWarm ? 'Warm' : isTask ? 'Task' : 'Kairos')}
           </span>
         </div>
       )}
@@ -368,7 +368,7 @@ export default function ChatPanel({
             <button 
               onClick={onAboutClick} 
               className="p-2 rounded-xl bg-[var(--surface-hover)] hover:bg-amber-500/20 hover:text-amber-300 text-[var(--text-main)] transition-all border border-transparent hover:border-amber-500/30 cursor-pointer shadow-sm" 
-              title="About Kavya // Character Codex"
+              title="About Kairos // Character Codex"
             >
               <BookOpen size={15} />
             </button>
@@ -401,15 +401,6 @@ export default function ChatPanel({
             title="Voice & App Settings"
           >
             <Settings size={15} />
-          </button>
-
-          {/* Theme Toggle Button */}
-          <button 
-            onClick={onThemeToggle} 
-            className="p-2 rounded-xl bg-[var(--surface-hover)] hover:bg-amber-500/20 hover:text-amber-300 text-[var(--text-main)] transition-all border border-transparent hover:border-amber-500/30 cursor-pointer shadow-sm" 
-            title="Toggle Dark / Light Theme"
-          >
-            {theme === 'dark' ? <Sun size={15} /> : <Moon size={15} />}
           </button>
         </div>
       </div>

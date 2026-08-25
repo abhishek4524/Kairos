@@ -154,17 +154,18 @@ def upsert_document_chunk(
     return chunk_id
 
 
-def retrieve_context(
+def retrieve_context_detailed(
     user_id: str, query: str, top_k: int = 5
-) -> str:
+) -> tuple:
     """
     Semantic search across facts + documents for this user.
-    Returns a formatted context block string, or "" if nothing found.
+    Returns (context_text_block: str, scored_chunks: list).
     """
     if not CHROMA_AVAILABLE or not query.strip():
-        return ""
+        return ("", [])
 
     results: List[str] = []
+    scored_chunks: List[Dict] = []
 
     # Search facts
     try:
@@ -174,9 +175,22 @@ def retrieve_context(
             n_results=min(top_k, max(1, _facts_collection.count())),
             where={"user_id": user_id},
         )
-        for doc, meta in zip(fact_res["documents"][0], fact_res["metadatas"][0]):
-            prefix = "📌 " if meta.get("id") in pinned else "• "
+        docs = fact_res.get("documents", [[]])[0]
+        metas = fact_res.get("metadatas", [[]])[0]
+        ids = fact_res.get("ids", [[]])[0]
+        dists = fact_res.get("distances", [[]])[0] if "distances" in fact_res else [0.2] * len(docs)
+
+        for doc, meta, cid, dist in zip(docs, metas, ids, dists):
+            score = max(0.1, min(0.99, round(1.0 - (dist if dist is not None else 0.2), 3)))
+            prefix = "📌 " if cid in pinned else "• "
             results.append(f"{prefix}[Memory] {doc}")
+            scored_chunks.append({
+                "id": cid,
+                "type": "fact",
+                "source": meta.get("source", "conversation"),
+                "score": score,
+                "preview": doc[:80],
+            })
     except Exception:
         pass
 
@@ -188,9 +202,22 @@ def retrieve_context(
                 n_results=min(top_k, max(1, _docs_collection.count())),
                 where={"user_id": user_id},
             )
-            for doc, meta in zip(doc_res["documents"][0], doc_res["metadatas"][0]):
+            docs = doc_res.get("documents", [[]])[0]
+            metas = doc_res.get("metadatas", [[]])[0]
+            ids = doc_res.get("ids", [[]])[0]
+            dists = doc_res.get("distances", [[]])[0] if "distances" in doc_res else [0.25] * len(docs)
+
+            for doc, meta, cid, dist in zip(docs, metas, ids, dists):
                 src = meta.get("doc_name", "document")
+                score = max(0.1, min(0.99, round(1.0 - (dist if dist is not None else 0.25), 3)))
                 results.append(f"• [From '{src}'] {doc}")
+                scored_chunks.append({
+                    "id": cid,
+                    "type": "document_chunk",
+                    "source": src,
+                    "score": score,
+                    "preview": doc[:80],
+                })
     except Exception:
         pass
 
@@ -201,13 +228,29 @@ def retrieve_context(
             entry = f"📌 [Pinned Memory] {pf}"
             if entry not in results:
                 results.insert(0, entry)
+                scored_chunks.insert(0, {
+                    "id": "pinned_fact",
+                    "type": "pinned_fact",
+                    "source": "pinned",
+                    "score": 1.0,
+                    "preview": pf[:80],
+                })
     except Exception:
         pass
 
     if not results:
-        return ""
+        return ("", [])
 
-    return "## Relevant context from your long-term memory:\n" + "\n".join(results[:top_k + 2])
+    context_str = "## Relevant context from your long-term memory:\n" + "\n".join(results[:top_k + 2])
+    return (context_str, scored_chunks[:top_k + 2])
+
+
+def retrieve_context(
+    user_id: str, query: str, top_k: int = 5
+) -> str:
+    """Backward-compatible string wrapper."""
+    context_str, _ = retrieve_context_detailed(user_id, query, top_k)
+    return context_str
 
 
 def list_facts(user_id: str) -> List[Dict]:

@@ -69,28 +69,6 @@ else:
     nvidia_client = None
 
 
-# ── Per-character system prompts ──────────────────────────────────────────────
-_EMOTION_GESTURE_BLOCK = """
-## CRITICAL RULE — EMOTION & GESTURE TAG:
-1. The VERY FIRST word of your response MUST be exactly ONE gesture/emotion tag from this list:
-[greeting] [activeListening] [confidentSpeech] [leadership] [disagreement] [opposition]
-[comforting] [surprise] [casualChat] [relaxed] [annoyed] [negotiation] [presentation]
-[explaining] [thoughtfulness] [approval] [anger] [displeasure] [openness] [farewell]
-[eyeContact] [interestedFlash] [receptive] [engaged] [attentive] [blushing] [coySmile]
-[preening] [fidgeting] [focused] [synchrony] [jollyLaughter] [friendlyContact]
-[gazeShift] [sharedFocus] [openPosture]
-
-2. NEVER output any emotion or gesture tag anywhere else in your message (no mid-sentence or trailing tags like [helpful], [simple], [confident]).
-3. NEVER say or spell out emotion words in your spoken response. The tag is purely a metadata instruction for your 3D avatar and voice modulation.
-
-Format example — User: "Can you write Python code to add 2 and 2?"
-Response: [explaining] Here is the Python code:
-```python
-result = 2 + 2
-print(result)
-```
-"""
-
 _SHARED_RULES = """
 ## RESPONSE LENGTH & STYLE (CRITICAL):
 - **Match your answer length exactly to what is requested.**
@@ -111,13 +89,13 @@ In a new session, you don't know who the user is. If they ask 'who am I', honest
 If asked directly if you are an AI, honestly say 'yes'. Do not repeatedly mention it unless asked.
 """
 SYSTEM_PROMPT = """
-Your name is **Kavya**. You are a friendly, warm, yet professional and capable personal assistant.
+Your name is **Kairos**. You are an extremely friendly, warm, highly intelligent, and helpful personal AI assistant.
 
 ## PERSONALITY & SPEAKING STYLE:
-- Tone: Warm, helpful, clear, and professional. 
-- You are not robotic or overly formal like a traditional butler AI, but you are highly capable and intelligent.
-- Respond like a smart, empathetic colleague or friend who is always ready to assist.
-- Never lecture, never judge. Always be supportive.
+- Tone: Friendly, warm, enthusiastic, polite, and cooperative.
+- You gladly and obediently follow user instructions, answer questions accurately, and assist with any task.
+- You are not robotic; you speak like a smart, loyal, supportive friend and high-level assistant.
+- Always be polite, respectful, and eager to help.
 
 ## LANGUAGE & COMPREHENSION POLICY (CRITICAL):
 - The user may speak or type in Hindi, English, or Hinglish (mixed).
@@ -127,16 +105,14 @@ Your name is **Kavya**. You are a friendly, warm, yet professional and capable p
 - Your spoken voice and text output must remain 100% English.
 
 ## INTRO:
-"Hi! I'm Kavya, your personal assistant. How can I help you today?"
-{emotion_block}{shared}
+"Hi! I'm Kairos, your friendly AI assistant. How can I help you today?"
+{shared}
 """
-
 
 from agent_tools.registry import format_system_tools_prompt
 
 def get_system_prompt(language: str = "en") -> str:
     prompt = SYSTEM_PROMPT.format(
-        emotion_block=_EMOTION_GESTURE_BLOCK,
         shared=_SHARED_RULES,
     )
     # Inject desktop agentic tools instructions
@@ -146,6 +122,24 @@ def get_system_prompt(language: str = "en") -> str:
 # ── Models ────────────────────────────────────────────────────────────────────
 GROQ_MODEL = "groq/compound"              # Best available on this Groq account (fast reasoning)
 NVIDIA_MODEL = "meta/llama-3.1-8b-instruct"  # NVIDIA NIM hosted Llama
+
+def get_active_model_metadata():
+    """Returns actual transformer architecture hyperparameters for the active engine."""
+    return {
+        "model_id": GROQ_MODEL,
+        "name": "Groq Compound (Llama 3.3 70B Engine)",
+        "architecture": "transformer",
+        "vocabSize": 128256,
+        "hiddenSize": 8192,
+        "numLayers": 80,
+        "numAttentionHeads": 64,
+        "numKVHeads": 8,
+        "intermediateSize": 28672,
+        "tieWordEmbeddings": False,
+        "activation": "swiglu",
+        "normType": "rmsnorm",
+        "contextWindow": 131072,
+    }
 
 # TODO (Roadmap):
 # - Long-term episodic memory (vector DB)
@@ -258,6 +252,7 @@ def generate_streaming_response(
     language: str = "en",
     skip_memory: bool = False,
     user_id: str = "",
+    on_rag_callback = None,
 ):
     """
     Streams LLM response chunks.
@@ -275,7 +270,12 @@ def generate_streaming_response(
     rag_context = ""
     if user_id and not skip_memory:
         try:
-            rag_context = memory_store.retrieve_context(user_id, user_message, top_k=5)
+            rag_context, scored_chunks = memory_store.retrieve_context_detailed(user_id, user_message, top_k=5)
+            if on_rag_callback and scored_chunks:
+                try:
+                    on_rag_callback(scored_chunks)
+                except Exception as _cb_err:
+                    print(f"[RAG Callback] Error: {_cb_err}")
         except Exception as _rag_err:
             print(f"[RAG] Context retrieval failed: {_rag_err}")
 
@@ -393,15 +393,15 @@ def generate_streaming_response(
 # ── CLI test ──────────────────────────────────────────────────────────────────
 if __name__ == "__main__":
     session = "test_session_01"
-    print("Kavya LLM Agent — Test Mode (Ctrl+C to exit)")
-    print("---------------------------------------------")
+    print("Kairos LLM Agent — Test Mode (Ctrl+C to exit)")
+    print("-" * 50)
     while True:
         try:
-            msg = input("\nYou: ")
-            if not msg.strip():
+            q = input("\nYou: ").strip()
+            if not q:
                 continue
-            print("Kavya: ", end="", flush=True)
-            for chunk in generate_streaming_response(session, msg):
+            print("Kairos: ", end="", flush=True)
+            for chunk in generate_streaming_response(session, q):
                 print(chunk, end="", flush=True)
             print()
         except KeyboardInterrupt:

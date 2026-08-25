@@ -129,7 +129,7 @@ export default function AboutKavya({ onClose, theme = 'dark', userRapportEnergy 
               <Star size={16} />
             </div>
             <span className="text-xs font-mono font-bold tracking-widest uppercase text-amber-300">
-              CHARACTER CODEX // KAVYA V2.0
+              CHARACTER CODEX // KAIROS V2.0
             </span>
           </div>
 
@@ -159,7 +159,7 @@ export default function AboutKavya({ onClose, theme = 'dark', userRapportEnergy 
               <div className="w-full h-full rounded-[22px] bg-slate-950 flex flex-col items-center justify-center relative overflow-hidden">
                 <Bot size={54} className="text-amber-300 animate-pulse" />
                 <div className="absolute bottom-2 text-[9px] font-mono tracking-widest font-bold text-amber-200">
-                  VRM // 3D
+                  AI CORE // 3D
                 </div>
               </div>
             </div>
@@ -173,7 +173,7 @@ export default function AboutKavya({ onClose, theme = 'dark', userRapportEnergy 
           <div className="flex-1 text-center md:text-left space-y-2">
             <div className="flex flex-wrap items-center justify-center md:justify-start gap-2.5">
               <h1 className="text-3xl md:text-4xl font-bold font-mono tracking-wide text-[var(--text-main)]">
-                KAVYA
+                KAIROS
               </h1>
               <span className="px-2.5 py-1 rounded-full bg-amber-400/20 text-amber-300 border border-amber-400/40 text-xs font-mono font-semibold">
                 NEURAL EDITION
