@@ -86,7 +86,7 @@ Personal Assistant (Kairos)/
 ### 1. Installation
 ```powershell
 # Clone the repository
-git clone https://github.com/abhishek4524/Kavya.git
+git clone https://github.com/abhishek4524/Kairos.git
 cd "Personal Assistant"
 
 # Install root dependencies
