@@ -1,4 +1,4 @@
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Depends, Header, HTTPException, status
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Depends, Header, HTTPException, Request, UploadFile, File, status
 import os
 import uvicorn
 import asyncio
@@ -36,6 +36,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 SESSION_LANGUAGES = {}
 SESSION_USER_IDS = {}  # session_id -> nanban_user_id (browser-local anonymous ID)
+SESSION_SELECTED_DOCS = {}  # session_id / user_id -> list of selected doc_ids (or None for all)
 
 app = FastAPI()
 
@@ -181,6 +182,17 @@ def delete_memory_document(doc_id: str, user_id: str):
     success = memory_store.delete_document(doc_id, user_id)
     return {"success": success}
 
+@app.get("/api/memory/documents/{user_id}/selection")
+def get_user_doc_selection(user_id: str):
+    return {"selected_doc_ids": SESSION_SELECTED_DOCS.get(user_id, None)}
+
+@app.post("/api/memory/documents/{user_id}/selection")
+async def set_user_doc_selection(user_id: str, request: Request):
+    data = await request.json()
+    doc_ids = data.get("selected_doc_ids")
+    SESSION_SELECTED_DOCS[user_id] = doc_ids
+    return {"status": "ok", "selected_doc_ids": doc_ids}
+
 @app.post("/api/memory/ingest")
 async def ingest_document(user_id: str, file: UploadFile = File(...)):
     """Upload and ingest a PDF, TXT, or MD file into long-term memory."""
@@ -253,7 +265,14 @@ def clean_for_tts(text: str) -> str:
     """Prepare text for TTS by removing code fence blocks, formatting symbols, and emotion/action tags."""
     if not text:
         return ""
+    # 1. Strip complete [ACTION:{...}] tags
     text = strip_action_tag(text)
+    # 2. Strip any INCOMPLETE / partially-streamed [ACTION: ... that didn't close yet
+    #    e.g. '[ACTION:{"tool":"work_mode"...' without closing ']'
+    text = re.sub(r'\[ACTION:\{.*', '', text, flags=re.DOTALL)
+    # 3. Strip any leftover JSON-looking fragments that contain "tool" / "params"
+    #    e.g. 'tool":"work_mode","params":{},"summary":"..."}]'
+    text = re.sub(r'tool\s*["\']?\s*:\s*["\']?[^,\]]*["\']?.*', '', text, flags=re.DOTALL)
     text = ALL_GESTURE_RE.sub("", text)
     # Strip markdown code blocks so TTS doesn't speak code syntax aloud
     text = re.sub(r'```[\s\S]*?```', ' ', text)
@@ -349,6 +368,7 @@ async def audio_stream(websocket: WebSocket, session_id: str = "default_session"
                 loop
             )
 
+        active_selected_docs = SESSION_SELECTED_DOCS.get(session_id, None) or SESSION_SELECTED_DOCS.get(effective_user_id, None)
         def producer():
             try:
                 for c in generate_streaming_response(
@@ -356,6 +376,7 @@ async def audio_stream(websocket: WebSocket, session_id: str = "default_session"
                     skip_memory=skip_memory,
                     user_id=effective_user_id,
                     on_rag_callback=on_rag_results_found,
+                    selected_doc_ids=active_selected_docs,
                 ):
                     if stop_event.is_set():
                         break
@@ -448,7 +469,8 @@ async def audio_stream(websocket: WebSocket, session_id: str = "default_session"
 
                         # Clean sentence for TTS
                         tts_sentence = clean_for_tts(sentence)
-                        if tts_sentence:
+                        # Safety guard: skip if ACTION tag content still leaks through
+                        if tts_sentence and 'tool' not in tts_sentence and '[ACTION' not in tts_sentence:
                             print(f"[TTS CHUNK Male] {tts_sentence}")
                             audio_bytes, _ = await generate_audio_async(tts_sentence, "en")
                             if audio_bytes:
@@ -468,7 +490,8 @@ async def audio_stream(websocket: WebSocket, session_id: str = "default_session"
                     })
 
                 tts_sentence = clean_for_tts(sentence)
-                if tts_sentence:
+                # Safety guard: skip if ACTION tag content still leaks through
+                if tts_sentence and 'tool' not in tts_sentence and '[ACTION' not in tts_sentence:
                     print(f"[TTS CHUNK Male] {tts_sentence}")
                     audio_bytes, _ = await generate_audio_async(tts_sentence, "en")
                     if audio_bytes:
@@ -607,8 +630,18 @@ async def audio_stream(websocket: WebSocket, session_id: str = "default_session"
                         if "user_id" in payload:
                             SESSION_USER_IDS[session_id] = payload["user_id"]
                             effective_user_id = payload["user_id"]
+                        if "selected_doc_ids" in payload:
+                            SESSION_SELECTED_DOCS[session_id] = payload["selected_doc_ids"]
+                            SESSION_SELECTED_DOCS[effective_user_id] = payload["selected_doc_ids"]
                         print(f"\n[TEXT INPUT]: '{user_text}'")
                         whisper_duration = 0.0
+                    elif payload.get("type") == "update_selected_docs":
+                        docs = payload.get("selected_doc_ids")
+                        SESSION_SELECTED_DOCS[session_id] = docs
+                        if "user_id" in payload:
+                            SESSION_SELECTED_DOCS[payload["user_id"]] = docs
+                        print(f"[RAG] Active document selection updated: {docs}")
+                        continue
                     elif payload.get("type") == "config_update":
                         if "user_id" in payload:
                             uid = payload["user_id"]
@@ -725,4 +758,11 @@ def read_root():
 
 
 if __name__ == "__main__":
-    uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True)
+    uvicorn.run(
+        "main:app",
+        host="0.0.0.0",
+        port=8000,
+        reload=True,
+        ws_ping_interval=60,   # Send keepalive ping every 60s (default: 20s)
+        ws_ping_timeout=120,   # Allow 120s before timing out (default: 20s)
+    )

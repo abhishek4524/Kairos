@@ -9,14 +9,13 @@ import {
 import RetroDial from '../common/RetroDial';
 
 const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:8000';
-const COLORS = ['#f5c560', '#ff9e7d', '#06b6d4', '#8b5cf6', '#10b981', '#3b82f6', '#8b4a3c'];
+const COLORS = ['#3b82f6', '#60a5fa', '#0284c7', '#38bdf8', '#93c5fd', '#1d4ed8', '#64748b'];
 
 export default function AdminDashboard({ 
   onClose, 
   theme = 'dark', 
   userId, 
   sessionId, 
-  onThemeToggle, 
   status = 'Idle',
   onOpenSandbox,
   onOpenMemory,

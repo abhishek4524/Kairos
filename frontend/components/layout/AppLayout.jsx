@@ -5,8 +5,7 @@ import ChatPanel from '../chat/ChatPanel';
 import HeroAICore from '../neural/HeroAICore';
 import VoiceDock from './VoiceDock';
 import ElectronTitleBar from './ElectronTitleBar';
-import AdminDashboard from '../admin/AdminDashboard';
-import AboutKavya from '../info/AboutKavya';
+import TelemetrySidebar from '../telemetry/TelemetrySidebar';
 import MemoryPanel from '../memory/MemoryPanel';
 import CodeSandbox from '../sandbox/CodeSandbox';
 import SettingsModal from '../settings/SettingsModal';
@@ -33,35 +32,17 @@ const getUserId = () => {
   }
 };
 
-const FRIENDLY_WORDS = ['hi', 'hello', 'hey', 'thanks', 'thank', 'please', 'love', 'nice', 'great', 'awesome', 'yaar', 'dost', 'bro', 'sis'];
-const EXCITED_WORDS = ['wow', 'amazing', 'haha', 'lol', 'yay', 'super', 'perfect', 'cool'];
-
 const deriveUserRapportEnergy = (messages) => {
   const recent = messages.filter(msg => msg.role === 'user').slice(-4);
-  if (!recent.length) return 0.35;
-
-  const total = recent.reduce((score, msg) => {
-    const text = String(msg.text || '').toLowerCase();
-    const words = text.split(/\s+/).filter(Boolean);
-    const exclamations = (text.match(/!/g) || []).length;
-    const friendliness = FRIENDLY_WORDS.some(word => text.includes(word)) ? 0.22 : 0;
-    const excitement = EXCITED_WORDS.some(word => text.includes(word)) ? 0.2 : 0;
-    const shortWarmPing = words.length > 0 && words.length <= 8 ? 0.12 : 0;
-    const punctuationLift = Math.min(exclamations * 0.08, 0.2);
-    return score + 0.28 + friendliness + excitement + shortWarmPing + punctuationLift;
-  }, 0);
-
-  return Math.min(1, total / recent.length);
+  return recent.length ? 0.4 : 0.2;
 };
 
 export default function AppLayout() {
-  const [userId] = useState(() => getUserId());
-  const [sessionId, setSessionId] = useState(() => localStorage.getItem('nanban-session-id') || crypto.randomUUID());
-
+  const [userId] = useState(getUserId);
+  const [sessionId] = useState(() => localStorage.getItem('nanban-session-id') || crypto.randomUUID());
   const [preferredLanguage, setPreferredLanguage] = useState(() => localStorage.getItem('nanban-language') || 'en');
-  const theme = 'dark';
-  
   const [vadSensitivity, setVadSensitivity] = useState(() => localStorage.getItem('nanban-vad-sensitivity') || 'medium');
+  const [theme] = useState('dark');
   const [isContinuousListening, setIsContinuousListening] = useState(false);
 
   const [messages, setMessages] = useState([]);
@@ -72,8 +53,6 @@ export default function AppLayout() {
   const [micError, setMicError] = useState('');
   const [isMobileChatOpen, setIsMobileChatOpen] = useState(false);
   const [isHistoryOpen, setIsHistoryOpen] = useState(false);
-  const [isDashboardOpen, setIsDashboardOpen] = useState(false);
-  const [isAboutOpen, setIsAboutOpen] = useState(false);
   const [isMemoryOpen, setIsMemoryOpen] = useState(false);
   const [isSandboxOpen, setIsSandboxOpen] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
@@ -95,8 +74,8 @@ export default function AppLayout() {
     startRecording,
     stopRecording,
     sendTextInput,
-    triggerIntro,
-    updateVadSensitivity
+    updateVadSensitivity,
+    updateSelectedDocs,
   } = useAudioStreaming({
     sessionId,
     userId,
@@ -117,6 +96,54 @@ export default function AppLayout() {
     onAudioPlayEvent: setAudioPlayEvent,
     onMicError: setMicError
   });
+
+  // ── Document Selection for RAG Context ──────────────────────────────────────
+  const [selectedDocIds, setSelectedDocIds] = useState(() => {
+    try {
+      const saved = localStorage.getItem('kairos_selected_docs_' + userId);
+      return saved ? JSON.parse(saved) : null;
+    } catch {
+      return null;
+    }
+  });
+
+  const handleUpdateDocSelection = (newSelected) => {
+    setSelectedDocIds(newSelected);
+    try {
+      if (newSelected === null) {
+        localStorage.removeItem('kairos_selected_docs_' + userId);
+      } else {
+        localStorage.setItem('kairos_selected_docs_' + userId, JSON.stringify(newSelected));
+      }
+    } catch (e) {}
+    updateSelectedDocs(newSelected);
+  };
+
+  const handleToggleSelectDoc = (docId, allDocIds) => {
+    let next;
+    if (selectedDocIds === null) {
+      next = allDocIds.filter(id => id !== docId);
+    } else if (selectedDocIds.includes(docId)) {
+      next = selectedDocIds.filter(id => id !== docId);
+    } else {
+      next = [...selectedDocIds, docId];
+    }
+    handleUpdateDocSelection(next);
+  };
+
+  const handleSelectAllDocs = (allDocIds) => {
+    handleUpdateDocSelection(allDocIds);
+  };
+
+  const handleDeselectAllDocs = () => {
+    handleUpdateDocSelection([]);
+  };
+
+  useEffect(() => {
+    if (selectedDocIds !== null) {
+      updateSelectedDocs(selectedDocIds);
+    }
+  }, [selectedDocIds]);
 
   // Auto-restart recording when status goes back to Idle in continuous listening mode
   useEffect(() => {
@@ -159,7 +186,6 @@ export default function AppLayout() {
   const toggleMic = () => isRecording ? stopRecording() : startRecording();
 
   const activeAvatarObj = { name: 'Kairos', accent: '#3b82f6' };
-  const userRapportEnergy = useMemo(() => deriveUserRapportEnergy(messages), [messages]);
 
   return (
     <div
@@ -183,14 +209,14 @@ export default function AppLayout() {
           >
             <div className="flex justify-between items-center mb-6 pb-3 border-b border-[var(--border-glass)]">
               <div className="flex items-center gap-2">
-                <Sparkles size={16} className="text-cyan-400" />
-                <h3 className="text-xs font-mono font-bold tracking-wider uppercase text-[var(--text-main)]">
+                <Sparkles size={16} className="text-blue-400" />
+                <h3 className="text-xs font-mono font-bold tracking-wider uppercase text-white">
                   Session Logs
                 </h3>
               </div>
               <button 
                 onClick={() => setIsHistoryOpen(false)} 
-                className="w-8 h-8 rounded-xl bg-[var(--surface-hover)] hover:bg-rose-500/20 hover:text-rose-400 flex items-center justify-center text-[var(--text-muted)] transition-colors cursor-pointer border border-[var(--border-glass)]"
+                className="w-8 h-8 rounded-xl bg-[var(--surface-hover)] hover:bg-rose-500/20 hover:text-rose-400 flex items-center justify-center text-slate-400 transition-colors cursor-pointer border border-[var(--border-glass)]"
               >
                 <X size={15} />
               </button>
@@ -220,18 +246,10 @@ export default function AppLayout() {
             onClose={() => setIsMemoryOpen(false)}
             userId={userId}
             theme={theme}
-          />
-        )}
-      </AnimatePresence>
-
-      {/* Character Codex / About Kairos Modal */}
-      <AnimatePresence>
-        {isAboutOpen && (
-          <AboutKavya 
-            onClose={() => setIsAboutOpen(false)}
-            theme={theme}
-            userRapportEnergy={userRapportEnergy}
-            messageCount={messages.length}
+            selectedDocIds={selectedDocIds}
+            onToggleSelectDoc={handleToggleSelectDoc}
+            onSelectAllDocs={handleSelectAllDocs}
+            onDeselectAllDocs={handleDeselectAllDocs}
           />
         )}
       </AnimatePresence>
@@ -256,7 +274,6 @@ export default function AppLayout() {
           <SettingsModal 
             onClose={() => setIsSettingsOpen(false)}
             theme={theme}
-            onThemeToggle={toggleTheme}
             preferredLanguage={preferredLanguage}
             onLanguageChange={setPreferredLanguage}
             vadSensitivity={vadSensitivity}
@@ -269,27 +286,20 @@ export default function AppLayout() {
         )}
       </AnimatePresence>
 
-      {/* System Dashboard Modal */}
-      <AnimatePresence>
-        {isDashboardOpen && (
-          <AdminDashboard 
-            onClose={() => setIsDashboardOpen(false)}
-            theme={theme}
-            userId={userId}
-            sessionId={sessionId}
-            status={status}
-            onThemeToggle={toggleTheme}
-            onOpenSandbox={() => {
-              setSandboxConfig({ code: '', language: 'python', filename: 'main.py', autoRun: false });
-              setIsSandboxOpen(true);
-            }}
-            onOpenMemory={() => setIsMemoryOpen(true)}
-            onOpenSettings={() => setIsSettingsOpen(true)}
-          />
-        )}
-      </AnimatePresence>
+      {/* ── 1. HOME LEFT SIDE: TELEMETRY & COCKPIT MATRIX (Compact) ──── */}
+      <TelemetrySidebar 
+        userId={userId}
+        sessionId={sessionId}
+        status={status}
+        onOpenSandbox={() => {
+          setSandboxConfig({ code: '', language: 'python', filename: 'main.py', autoRun: false });
+          setIsSandboxOpen(true);
+        }}
+        onOpenMemory={() => setIsMemoryOpen(true)}
+        onOpenSettings={() => setIsSettingsOpen(true)}
+      />
 
-      {/* 2. Middle: Living AI Core 3D Neural View — z-0 so overlays are above, pointer-events-auto for canvas interaction */}
+      {/* ── 2. MIDDLE: LIVING AI CORE 3D NEURAL VIEW ────────────────── */}
       <div className="relative flex-1 h-full z-0 pointer-events-auto">
         <HeroAICore 
           audioPlayEvent={audioPlayEvent}
@@ -298,7 +308,7 @@ export default function AppLayout() {
         />
       </div>
 
-      {/* 3. Right: Conversation Panel (Desktop standard, Mobile bottom sheet) */}
+      {/* ── 3. RIGHT: CONVERSATION PANEL ────────────────────────────── */}
       <div className={`
         fixed md:relative inset-x-0 bottom-0 md:bottom-auto md:inset-auto z-40 md:z-auto
         transition-transform duration-500 ease-[cubic-bezier(0.32,0.72,0,1)]
@@ -310,7 +320,7 @@ export default function AppLayout() {
           className="md:hidden absolute top-0 inset-x-0 h-8 flex justify-center pt-3 cursor-pointer z-50 bg-transparent"
           onClick={() => setIsMobileChatOpen(!isMobileChatOpen)}
         >
-          <div className="w-12 h-1.5 rounded-full bg-cyan-400/40" />
+          <div className="w-12 h-1.5 rounded-full bg-blue-500/40" />
         </div>
         
         <ChatPanel 
@@ -321,9 +331,12 @@ export default function AppLayout() {
           preferredLanguage={preferredLanguage}
           onLanguageChange={setPreferredLanguage}
           theme="dark"
+          userId={userId}
+          selectedDocIds={selectedDocIds}
+          onToggleSelectDoc={handleToggleSelectDoc}
+          onSelectAllDocs={handleSelectAllDocs}
+          onDeselectAllDocs={handleDeselectAllDocs}
           onHistoryClick={() => setIsHistoryOpen(!isHistoryOpen)}
-          onDashboardClick={() => setIsDashboardOpen(true)}
-          onAboutClick={() => setIsAboutOpen(true)}
           onMemoryClick={() => setIsMemoryOpen(true)}
           onSettingsClick={() => setIsSettingsOpen(true)}
           onSandboxClick={() => {
@@ -336,7 +349,7 @@ export default function AppLayout() {
         />
       </div>
 
-      {/* 4. Bottom: Voice Dock */}
+      {/* ── 4. BOTTOM: VOICE DOCK ───────────────────────────────────── */}
       <div className={`
         absolute left-1/2 -translate-x-1/2 transition-all duration-500 z-30 flex justify-center w-full
         ${isMobileChatOpen ? 'bottom-[80vh] md:bottom-6' : 'bottom-20 md:bottom-6'}

@@ -155,10 +155,12 @@ def upsert_document_chunk(
 
 
 def retrieve_context_detailed(
-    user_id: str, query: str, top_k: int = 5
+    user_id: str, query: str, top_k: int = 5, selected_doc_ids: Optional[List[str]] = None
 ) -> tuple:
     """
     Semantic search across facts + documents for this user.
+    If selected_doc_ids is provided (e.g. ['doc_1', 'doc_2']), only chunks from those documents are included.
+    If selected_doc_ids is empty list [], document search is skipped.
     Returns (context_text_block: str, scored_chunks: list).
     """
     if not CHROMA_AVAILABLE or not query.strip():
@@ -194,32 +196,43 @@ def retrieve_context_detailed(
     except Exception:
         pass
 
-    # Search documents
-    try:
-        if _docs_collection.count() > 0:
-            doc_res = _docs_collection.query(
-                query_texts=[query],
-                n_results=min(top_k, max(1, _docs_collection.count())),
-                where={"user_id": user_id},
-            )
-            docs = doc_res.get("documents", [[]])[0]
-            metas = doc_res.get("metadatas", [[]])[0]
-            ids = doc_res.get("ids", [[]])[0]
-            dists = doc_res.get("distances", [[]])[0] if "distances" in doc_res else [0.25] * len(docs)
+    # Search documents (respecting selected_doc_ids filter)
+    should_search_docs = selected_doc_ids is None or len(selected_doc_ids) > 0
+    if should_search_docs:
+        try:
+            if _docs_collection.count() > 0:
+                doc_where = {"user_id": user_id}
+                if selected_doc_ids is not None and len(selected_doc_ids) == 1:
+                    doc_where = {"$and": [{"user_id": user_id}, {"doc_id": selected_doc_ids[0]}]}
+                elif selected_doc_ids is not None and len(selected_doc_ids) > 1:
+                    doc_where = {"$and": [{"user_id": user_id}, {"doc_id": {"$in": selected_doc_ids}}]}
 
-            for doc, meta, cid, dist in zip(docs, metas, ids, dists):
-                src = meta.get("doc_name", "document")
-                score = max(0.1, min(0.99, round(1.0 - (dist if dist is not None else 0.25), 3)))
-                results.append(f"• [From '{src}'] {doc}")
-                scored_chunks.append({
-                    "id": cid,
-                    "type": "document_chunk",
-                    "source": src,
-                    "score": score,
-                    "preview": doc[:80],
-                })
-    except Exception:
-        pass
+                doc_res = _docs_collection.query(
+                    query_texts=[query],
+                    n_results=min(top_k, max(1, _docs_collection.count())),
+                    where=doc_where,
+                )
+                docs = doc_res.get("documents", [[]])[0]
+                metas = doc_res.get("metadatas", [[]])[0]
+                ids = doc_res.get("ids", [[]])[0]
+                dists = doc_res.get("distances", [[]])[0] if "distances" in doc_res else [0.25] * len(docs)
+
+                for doc, meta, cid, dist in zip(docs, metas, ids, dists):
+                    # Double check filter in Python if Chroma where condition had limitations
+                    if selected_doc_ids is not None and meta.get("doc_id") not in selected_doc_ids:
+                        continue
+                    src = meta.get("doc_name", "document")
+                    score = max(0.1, min(0.99, round(1.0 - (dist if dist is not None else 0.25), 3)))
+                    results.append(f"• [From '{src}'] {doc}")
+                    scored_chunks.append({
+                        "id": cid,
+                        "type": "document_chunk",
+                        "source": src,
+                        "score": score,
+                        "preview": doc[:80],
+                    })
+        except Exception as _doc_err:
+            print(f"[RAG] Document query error: {_doc_err}")
 
     # Also inject pinned facts unconditionally
     try:
@@ -241,15 +254,15 @@ def retrieve_context_detailed(
     if not results:
         return ("", [])
 
-    context_str = "## Relevant context from your long-term memory:\n" + "\n".join(results[:top_k + 2])
+    context_str = "## Relevant context from your long-term memory & selected documents:\n" + "\n".join(results[:top_k + 2])
     return (context_str, scored_chunks[:top_k + 2])
 
 
 def retrieve_context(
-    user_id: str, query: str, top_k: int = 5
+    user_id: str, query: str, top_k: int = 5, selected_doc_ids: Optional[List[str]] = None
 ) -> str:
     """Backward-compatible string wrapper."""
-    context_str, _ = retrieve_context_detailed(user_id, query, top_k)
+    context_str, _ = retrieve_context_detailed(user_id, query, top_k=top_k, selected_doc_ids=selected_doc_ids)
     return context_str
 
 

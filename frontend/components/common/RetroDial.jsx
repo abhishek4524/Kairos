@@ -62,10 +62,24 @@ export default function RetroDial({
       text: 'text-emerald-300',
       needle: '#10b981',
       bezel: 'rgba(16, 185, 129, 0.25)'
+    },
+    blue: {
+      arc: '#3b82f6',
+      glow: 'rgba(59, 130, 246, 0.45)',
+      text: 'text-blue-300',
+      needle: '#3b82f6',
+      bezel: 'rgba(59, 130, 246, 0.25)'
+    },
+    sky: {
+      arc: '#38bdf8',
+      glow: 'rgba(56, 189, 248, 0.45)',
+      text: 'text-sky-300',
+      needle: '#38bdf8',
+      bezel: 'rgba(56, 189, 248, 0.25)'
     }
   };
 
-  const theme = colorMap[variant] || colorMap.gold;
+  const theme = colorMap[variant] || colorMap.blue;
 
   const radius = (size / 2) - 10;
   const circumference = 2 * Math.PI * radius;

@@ -4,66 +4,55 @@
 
 @layer base {
   :root {
-    /* ── Sci-Fi Dark Theme (Default) ─────────────────────────────────── */
-    --background: #070913;
-    --background-alt: #0d111f;
-    --surface: rgba(13, 18, 36, 0.55);
-    --surface-hover: rgba(22, 30, 58, 0.75);
-    --surface-glass: rgba(10, 14, 28, 0.7);
+    /* ── Professional Enterprise Dark Theme (White, Gray, Blue) ─────── */
+    --background: #030712;          /* Deep Obsidian Void */
+    --background-alt: #0b0f19;      /* Slate Night */
+    --surface: rgba(15, 23, 42, 0.65); /* Sleek Glass Surface */
+    --surface-hover: rgba(30, 41, 59, 0.8);
+    --surface-glass: rgba(10, 15, 29, 0.75);
     
-    /* Neon Sci-Fi Accents */
-    --primary: #06b6d4;          /* Cyber Cyan */
-    --primary-hover: #0891b2;
-    --primary-glow: rgba(6, 182, 212, 0.35);
+    /* Precision Blue & Sky Accents */
+    --primary: #3b82f6;             /* Electric / Royal Blue */
+    --primary-hover: #2563eb;
+    --primary-glow: rgba(59, 130, 246, 0.35);
     
-    --accent: #8b5cf6;           /* Electric Violet */
-    --accent-hover: #7c3aed;
-    --accent-glow: rgba(139, 92, 246, 0.35);
+    --accent: #60a5fa;              /* Sky Blue */
+    --accent-hover: #38bdf8;
+    --accent-glow: rgba(96, 165, 250, 0.3);
 
-    /* ── Warm Indian Classical & Soft Anime Accents ────────────────── */
-    --gold: #f5c560;             /* Temple Gold / Marigold */
-    --gold-hover: #eab308;
-    --gold-glow: rgba(245, 197, 96, 0.35);
-
-    --coral: #ff9e7d;            /* Warm Coral / Peach Aura */
-    --coral-hover: #f97316;
-    --coral-glow: rgba(255, 158, 125, 0.35);
-
-    --maroon-brass: #8b4a3c;     /* Antique Maroon Undertone */
-    --brass: #d97706;            /* Warm Brass */
-    --brass-glow: rgba(217, 119, 6, 0.25);
+    --secondary: #0284c7;           /* Ocean Blue */
+    --success: #38bdf8;             /* Clean Ice Blue */
+    --warning: #93c5fd;             /* Soft Blue */
+    --danger: #ef4444;              /* Coral Red */
     
-    --secondary: #3b82f6;        /* Cobalt Blue */
-    --success: #10b981;          /* Emerald Pulse */
-    --warning: #f5c560;          /* Warm Gold */
-    --danger: #f43f5e;           /* Laser Rose */
-    
-    --text-main: #f8fafc;
+    /* Clean Monochrome & Slate Text */
+    --text-main: #ffffff;
     --text-muted: #94a3b8;
     --text-subtle: #64748b;
-    --text-warm: #fde68a;
+    --text-warm: #e2e8f0;
     
+    /* Precision Glass & Glow Borders */
     --border-glass: rgba(255, 255, 255, 0.08);
-    --border-glow: rgba(6, 182, 212, 0.25);
-    --border-accent-glow: rgba(139, 92, 246, 0.25);
-    --border-gold-glow: rgba(245, 197, 96, 0.3);
-    --border-warm-brass: rgba(139, 74, 60, 0.4);
+    --border-glow: rgba(59, 130, 246, 0.35);
+    --border-accent-glow: rgba(96, 165, 250, 0.25);
+    --border-gold-glow: rgba(59, 130, 246, 0.25);
+    --border-warm-brass: rgba(30, 41, 59, 0.6);
     
     --radius-sm: 10px;
-    --radius-md: 20px;
-    --radius-lg: 28px;
-    --radius-xl: 34px;
+    --radius-md: 18px;
+    --radius-lg: 24px;
+    --radius-xl: 32px;
     --radius-full: 9999px;
   }
   
 
   body {
     @apply bg-[var(--background)] text-[var(--text-main)] antialiased overflow-hidden select-none;
-    font-family: 'Inter', sans-serif;
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
   }
   
   h1, h2, h3, h4, h5, h6, .brand-font {
-    font-family: 'Space Grotesk', 'Outfit', sans-serif;
+    font-family: 'Space Grotesk', 'Inter', sans-serif;
   }
 
   code, pre, .font-mono {
@@ -72,71 +61,55 @@
 }
 
 @layer utilities {
-  /* ── Sci-Fi Glass Panels ────────────────────────────────────────── */
+  /* ── Precision Glass Panels (White / Slate / Blue) ─────────────────── */
   .glass-panel {
     background: var(--surface);
-    backdrop-filter: blur(20px) saturate(1.8);
-    -webkit-backdrop-filter: blur(20px) saturate(1.8);
+    backdrop-filter: blur(24px) saturate(1.6);
+    -webkit-backdrop-filter: blur(24px) saturate(1.6);
     border: 1px solid var(--border-glass);
     border-radius: var(--radius-lg);
-    box-shadow: 0 12px 40px rgba(0, 0, 0, 0.35), inset 0 1px 1px rgba(255, 255, 255, 0.06);
+    box-shadow: 0 16px 40px rgba(0, 0, 0, 0.45), inset 0 1px 1px rgba(255, 255, 255, 0.08);
   }
 
   .glass-panel-warm {
-    background: linear-gradient(135deg, rgba(24, 20, 32, 0.65) 0%, rgba(18, 14, 26, 0.75) 100%);
-    backdrop-filter: blur(22px) saturate(1.7);
-    -webkit-backdrop-filter: blur(22px) saturate(1.7);
-    border: 1px solid var(--border-gold-glow);
+    background: linear-gradient(135deg, rgba(15, 23, 42, 0.8) 0%, rgba(10, 15, 30, 0.9) 100%);
+    backdrop-filter: blur(24px) saturate(1.6);
+    -webkit-backdrop-filter: blur(24px) saturate(1.6);
+    border: 1px solid rgba(59, 130, 246, 0.25);
     border-radius: var(--radius-lg);
-    box-shadow: 0 14px 44px rgba(0, 0, 0, 0.4), inset 0 1px 2px rgba(245, 197, 96, 0.12), 0 0 25px rgba(245, 197, 96, 0.05);
+    box-shadow: 0 16px 48px rgba(0, 0, 0, 0.5), inset 0 1px 2px rgba(255, 255, 255, 0.08), 0 0 25px rgba(59, 130, 246, 0.08);
   }
 
   .glass-panel-interactive {
     background: var(--surface);
-    backdrop-filter: blur(20px) saturate(1.8);
-    -webkit-backdrop-filter: blur(20px) saturate(1.8);
+    backdrop-filter: blur(24px) saturate(1.6);
+    -webkit-backdrop-filter: blur(24px) saturate(1.6);
     border: 1px solid var(--border-glass);
     border-radius: var(--radius-lg);
-    box-shadow: 0 12px 40px rgba(0, 0, 0, 0.35), inset 0 1px 1px rgba(255, 255, 255, 0.06);
-    transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+    box-shadow: 0 16px 40px rgba(0, 0, 0, 0.45), inset 0 1px 1px rgba(255, 255, 255, 0.08);
+    transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
   }
   .glass-panel-interactive:hover {
     background: var(--surface-hover);
-    border-color: var(--border-gold-glow);
-    box-shadow: 0 16px 48px rgba(0, 0, 0, 0.45), 0 0 25px var(--gold-glow);
+    border-color: rgba(59, 130, 246, 0.4);
+    box-shadow: 0 20px 48px rgba(0, 0, 0, 0.55), 0 0 25px rgba(59, 130, 246, 0.15);
   }
 
-  /* ── Sci-Fi & Warm Glow Utilities ─────────────────────────────────── */
-  .glow-cyan {
-    box-shadow: 0 0 20px var(--primary-glow), 0 0 40px rgba(6, 182, 212, 0.15);
+  /* ── Precision Glow Utilities ─────────────────────────────────────── */
+  .glow-cyan, .glow-gold, .glow-coral {
+    box-shadow: 0 0 20px var(--primary-glow), 0 0 40px rgba(59, 130, 246, 0.15);
   }
   
   .glow-violet {
-    box-shadow: 0 0 20px var(--accent-glow), 0 0 40px rgba(139, 92, 246, 0.15);
-  }
-
-  .glow-gold {
-    box-shadow: 0 0 20px var(--gold-glow), 0 0 40px rgba(245, 197, 96, 0.15);
-  }
-
-  .glow-coral {
-    box-shadow: 0 0 20px var(--coral-glow), 0 0 40px rgba(255, 158, 125, 0.15);
+    box-shadow: 0 0 20px rgba(96, 165, 250, 0.35), 0 0 40px rgba(96, 165, 250, 0.15);
   }
 
   .glow-emerald {
-    box-shadow: 0 0 20px rgba(16, 185, 129, 0.35), 0 0 40px rgba(16, 185, 129, 0.15);
+    box-shadow: 0 0 20px rgba(56, 189, 248, 0.35), 0 0 40px rgba(56, 189, 248, 0.15);
   }
 
-  .text-glow-cyan {
-    text-shadow: 0 0 12px var(--primary), 0 0 24px rgba(6, 182, 212, 0.4);
-  }
-
-  .text-glow-gold {
-    text-shadow: 0 0 12px var(--gold), 0 0 24px rgba(245, 197, 96, 0.45);
-  }
-
-  .text-glow-coral {
-    text-shadow: 0 0 12px var(--coral), 0 0 24px rgba(255, 158, 125, 0.45);
+  .text-glow-cyan, .text-glow-gold, .text-glow-coral {
+    text-shadow: 0 0 12px var(--primary), 0 0 24px rgba(59, 130, 246, 0.4);
   }
 
   .flex-center {

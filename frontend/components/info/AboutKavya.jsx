@@ -20,92 +20,88 @@ export default function AboutKavya({ onClose, theme = 'dark', userRapportEnergy 
       title: 'Mind // LLM Engine',
       subtitle: 'Groq Llama 3.3 70B Versatile',
       icon: Brain,
-      color: 'text-violet-400',
-      border: 'border-violet-500/30',
-      bgGlow: 'from-violet-950/40 to-slate-950/60',
+      color: 'text-blue-400',
+      border: 'border-blue-500/30',
+      bgGlow: 'from-blue-950/40 to-slate-950/60',
       status: 'ONLINE',
-      statusColor: 'text-emerald-400',
+      statusColor: 'text-blue-400',
       summary: 'High-speed reasoning, multilingual comprehension, and context memory.',
-      details: 'Processes Hindi, English, and Hinglish queries natively. System prompt strictly enforces natural, high-quality English output with warm companion tonality and emotion markup.'
+      details: 'Processes queries natively with strict English TTS synthesis and agentic tool dispatching.'
     },
     {
       id: 'ears',
       title: 'Ears // Speech Recognition',
-      subtitle: 'Whisper Large v3 + RMS Energy VAD',
+      subtitle: 'Whisper Large v3 + Energy VAD',
       icon: Ear,
-      color: 'text-cyan-400',
-      border: 'border-cyan-500/30',
-      bgGlow: 'from-cyan-950/40 to-slate-950/60',
+      color: 'text-sky-400',
+      border: 'border-sky-500/30',
+      bgGlow: 'from-sky-950/40 to-slate-950/60',
       status: 'ACTIVE',
-      statusColor: 'text-cyan-400',
-      summary: 'WebRTC / Energy Voice Activity Detection with 16kHz WebSocket audio downsampling.',
-      details: 'Detects natural user speech pauses and filters out ambient background noise before transmitting to Groq Whisper for instant transcription.'
+      statusColor: 'text-sky-400',
+      summary: 'Voice Activity Detection with 16kHz WebSocket audio downsampling.',
+      details: 'Detects natural user speech pauses and filters ambient background noise.'
     },
     {
       id: 'voice',
       title: 'Voice // Neural Speech Synthesis',
-      subtitle: 'Edge-TTS (en-IN-NeerjaNeural)',
+      subtitle: 'Edge-TTS (en-US-ChristopherNeural)',
       icon: Volume2,
-      color: 'text-amber-400',
-      border: 'border-amber-500/30',
-      bgGlow: 'from-amber-950/40 to-slate-950/60',
-      status: 'LOCKED (EN)',
-      statusColor: 'text-amber-300',
-      summary: 'Expressive Indian-accented English neural voice with low-latency streaming.',
-      details: 'Runs asynchronously with audio playback event triggers that feed real-time mouth visemes and blendshape morph targets to the 3D avatar.'
+      color: 'text-blue-300',
+      border: 'border-blue-500/30',
+      bgGlow: 'from-blue-950/40 to-slate-950/60',
+      status: 'ONLINE',
+      statusColor: 'text-blue-300',
+      summary: 'Clear, modern English neural voice with low-latency streaming.',
+      details: 'Feeds live audio frequency analysis directly into the Living AI Core 3D visualizer.'
     },
     {
       id: 'presence',
-      title: 'Presence // 3D Avatar Engine',
-      subtitle: 'Three.js + VRM Character Rigging',
+      title: 'Presence // 3D Neural Core',
+      subtitle: 'Three.js Living AI Core',
       icon: Eye,
-      color: 'text-rose-400',
-      border: 'border-rose-500/30',
-      bgGlow: 'from-rose-950/40 to-slate-950/60',
+      color: 'text-sky-300',
+      border: 'border-blue-500/30',
+      bgGlow: 'from-blue-950/40 to-slate-950/60',
       status: '60 FPS',
-      statusColor: 'text-emerald-400',
-      summary: 'Realistic body language gestures, micro-blinks, breathing, and gaze tracking.',
-      details: 'Implements Allan Pease body language research (open palms, attentiveness, friendly head tilts) with live procedural idle micro-reactions.'
+      statusColor: 'text-blue-400',
+      summary: 'Interactive orbital 3D neural brain core with audio-reactive pulsing.',
+      details: 'Smooth orbit controls, multi-angle zoom, and live state transitions.'
     },
     {
       id: 'memory',
       title: 'Memory // Context & Recall',
-      subtitle: 'SQLite Local Store + Redis Cache',
+      subtitle: 'SQLite Local Store + ChromaDB RAG',
       icon: Database,
-      color: 'text-emerald-400',
-      border: 'border-emerald-500/30',
-      bgGlow: 'from-emerald-950/40 to-slate-950/60',
+      color: 'text-blue-400',
+      border: 'border-blue-500/30',
+      bgGlow: 'from-blue-950/40 to-slate-950/60',
       status: 'ONLINE',
-      statusColor: 'text-emerald-400',
-      summary: 'Session conversation logs and personalized rapport tracking in local storage.',
-      details: 'Stores conversation history locally on device. RAG vector embeddings and semantic search pipeline scheduled for upcoming memory expansion.'
+      statusColor: 'text-blue-400',
+      summary: 'Local SQLite conversation turns and ChromaDB vector embeddings with interactive document filtering.',
+      details: 'Extracts user facts and indexes documents locally on disk with zero external database dependencies.'
     },
     {
       id: 'hands',
-      title: 'Hands // OS Control & Tools',
-      subtitle: 'Desktop Automation Controller',
+      title: 'Hands // Agentic Desktop Tools',
+      subtitle: 'Windows Native Subprocess Execution',
       icon: Wrench,
-      color: 'text-orange-400',
-      border: 'border-orange-500/30',
-      bgGlow: 'from-orange-950/40 to-slate-950/60',
-      status: 'PLANNED',
-      statusColor: 'text-amber-400',
-      summary: 'Autonomous system tasks, file operations, web browsing, and app integrations.',
-      details: 'Extensible tool-calling sandbox to perform real desktop actions on behalf of the user securely with permission verification.'
+      color: 'text-blue-300',
+      border: 'border-blue-500/30',
+      bgGlow: 'from-blue-950/40 to-slate-950/60',
+      status: 'CONNECTED',
+      statusColor: 'text-blue-400',
+      summary: 'Work Mode workspace launcher, VS Code automation, App manager, & Code Sandbox.',
+      details: 'Executes desktop automation tasks seamlessly via agentic tool tags.'
     }
   ];
 
-  const abilities = [
-    { name: 'Voice Interaction', desc: 'Real-time two-way audio streaming', state: 'unlocked', icon: '🎙️' },
-    { name: 'Hinglish Comprehension', desc: 'Understands Hindi, Hinglish, & English', state: 'unlocked', icon: '🌐' },
-    { name: '3D VRM Lipsync', desc: 'Audio-reactive blendshape phonemes', state: 'unlocked', icon: '🎭' },
-    { name: 'Voice Theme Switcher', desc: '"Switch to dark / light mode"', state: 'unlocked', icon: '🎨' },
-    { name: 'Analog Telemetry Dials', desc: 'Real-time cockpit performance meters', state: 'unlocked', icon: '📊' },
-    { name: 'Companion Idle Reactions', desc: 'Natural blinks, smiles, & head tilts', state: 'unlocked', icon: '✨' },
-    { name: 'Code Sandbox Execution', desc: 'Run Python/JS scripts in isolated env', state: 'in-progress', icon: '💻' },
-    { name: 'WhatsApp & App Connect', desc: 'Read and send messages hands-free', state: 'locked', icon: '📱' },
-    { name: 'Long-Term RAG Knowledge', desc: 'Recall personal notes and preferences', state: 'locked', icon: '🧠' },
-    { name: 'Desktop OS Controller', desc: 'Automate mouse, keyboard, and files', state: 'locked', icon: '⚡' }
+  const roadmapItems = [
+    { name: 'Fast Voice Transcription', desc: 'Real-time Whisper STT + VAD', state: 'unlocked', icon: '🎙️' },
+    { name: 'Living AI 3D Core', desc: 'Audio-reactive particle pulse core', state: 'unlocked', icon: '🌐' },
+    { name: 'Work Mode Launcher', desc: 'Automates Chrome tabs + VS Code + Brave', state: 'unlocked', icon: '⚡' },
+    { name: 'RAG Document Selection', desc: 'Select/unselect knowledge documents for chat', state: 'unlocked', icon: '📄' },
+    { name: 'Code Sandbox Execution', desc: 'Run Python/JS scripts in isolated env', state: 'unlocked', icon: '💻' },
+    { name: 'Pure Local SQLite Memory', desc: 'Zero cloud database dependencies', state: 'unlocked', icon: '🔒' },
   ];
 
   const affinityScore = Math.round(Math.min(100, Math.max(25, userRapportEnergy * 100)));
@@ -123,19 +119,19 @@ export default function AboutKavya({ onClose, theme = 'dark', userRapportEnergy 
       <div className="max-w-5xl mx-auto relative z-10 space-y-8 pb-12">
         
         {/* ── Top Header Navigation ──────────────────────────────────── */}
-        <div className="flex items-center justify-between pb-4 border-b border-[var(--border-gold-glow)]">
+        <div className="flex items-center justify-between pb-4 border-b border-[var(--border-glass)]">
           <div className="flex items-center gap-2">
-            <div className="w-8 h-8 rounded-xl bg-amber-400/20 border border-amber-400/40 flex items-center justify-center text-amber-300">
+            <div className="w-8 h-8 rounded-xl bg-blue-600/20 border border-blue-500/40 flex items-center justify-center text-blue-300">
               <Star size={16} />
             </div>
-            <span className="text-xs font-mono font-bold tracking-widest uppercase text-amber-300">
+            <span className="text-xs font-mono font-bold tracking-widest uppercase text-blue-300">
               CHARACTER CODEX // KAIROS V2.0
             </span>
           </div>
 
           <button 
             onClick={onClose}
-            className="w-10 h-10 rounded-2xl glass-panel-warm hover:bg-rose-500/20 hover:text-rose-300 hover:border-rose-500/40 flex items-center justify-center text-[var(--text-main)] transition-all cursor-pointer border border-[var(--border-gold-glow)] shadow-lg"
+            className="w-10 h-10 rounded-2xl glass-panel hover:bg-red-500/20 hover:text-red-300 hover:border-red-500/40 flex items-center justify-center text-slate-300 transition-all cursor-pointer border border-slate-700 shadow-lg"
             title="Close Codex"
           >
             <X size={20} />
@@ -143,28 +139,20 @@ export default function AboutKavya({ onClose, theme = 'dark', userRapportEnergy 
         </div>
 
         {/* ── 1. Hero Character Profile Card ─────────────────────────── */}
-        <div className="glass-panel-warm rounded-3xl p-6 md:p-8 border border-[var(--border-gold-glow)] shadow-2xl relative overflow-hidden flex flex-col md:flex-row items-center gap-6 md:gap-8">
+        <div className="glass-panel rounded-3xl p-6 md:p-8 border border-slate-800 shadow-2xl relative overflow-hidden flex flex-col md:flex-row items-center gap-6 md:gap-8">
           
-          {/* Subtle Mandala Texture Background */}
-          <div className="mandala-overlay w-[380px] h-[380px] opacity-20 -left-10 -top-10">
-            <svg viewBox="0 0 200 200" className="w-full h-full stroke-amber-400 fill-none" strokeWidth="0.5">
-              <circle cx="100" cy="100" r="90" strokeDasharray="3 4" />
-              <circle cx="100" cy="100" r="70" />
-            </svg>
-          </div>
-
           {/* Portrait Icon Render */}
           <div className="relative shrink-0">
-            <div className="w-28 h-28 md:w-36 md:h-36 rounded-3xl bg-gradient-to-tr from-amber-500 via-rose-500 to-violet-600 p-1 shadow-[0_0_35px_rgba(245,197,96,0.4)]">
+            <div className="w-28 h-28 md:w-36 md:h-36 rounded-3xl bg-gradient-to-tr from-blue-600 via-sky-500 to-indigo-600 p-1 shadow-[0_0_35px_rgba(59,130,246,0.4)]">
               <div className="w-full h-full rounded-[22px] bg-slate-950 flex flex-col items-center justify-center relative overflow-hidden">
-                <Bot size={54} className="text-amber-300 animate-pulse" />
-                <div className="absolute bottom-2 text-[9px] font-mono tracking-widest font-bold text-amber-200">
+                <Bot size={54} className="text-blue-300 animate-pulse" />
+                <div className="absolute bottom-2 text-[9px] font-mono tracking-widest font-bold text-blue-200">
                   AI CORE // 3D
                 </div>
               </div>
             </div>
             {/* Level Edition Badge */}
-            <div className="absolute -bottom-2 -right-2 px-2.5 py-1 rounded-full bg-slate-950 border border-amber-400 text-[10px] font-mono font-bold text-amber-300 shadow-md">
+            <div className="absolute -bottom-2 -right-2 px-2.5 py-1 rounded-full bg-slate-950 border border-blue-400 text-[10px] font-mono font-bold text-blue-300 shadow-md">
               LVL 2.0
             </div>
           </div>
@@ -172,35 +160,36 @@ export default function AboutKavya({ onClose, theme = 'dark', userRapportEnergy 
           {/* Character Identity & Lore */}
           <div className="flex-1 text-center md:text-left space-y-2">
             <div className="flex flex-wrap items-center justify-center md:justify-start gap-2.5">
-              <h1 className="text-3xl md:text-4xl font-bold font-mono tracking-wide text-[var(--text-main)]">
+              <h1 className="text-3xl md:text-4xl font-bold font-mono tracking-wide text-white">
                 KAIROS
               </h1>
-              <span className="px-2.5 py-1 rounded-full bg-amber-400/20 text-amber-300 border border-amber-400/40 text-xs font-mono font-semibold">
+              <span className="px-2.5 py-1 rounded-full bg-blue-500/20 text-blue-300 border border-blue-500/40 text-xs font-mono font-semibold">
                 NEURAL EDITION
               </span>
-              <span className="px-2.5 py-1 rounded-full bg-cyan-400/20 text-cyan-300 border border-cyan-400/40 text-xs font-mono font-semibold">
-                ENGLISH-ONLY TTS
+              <span className="px-2.5 py-1 rounded-full bg-sky-500/20 text-sky-300 border border-sky-500/40 text-xs font-mono font-semibold">
+                PROFESSIONAL DESKTOP AI
               </span>
             </div>
 
-            <p className="text-sm md:text-base text-[var(--text-muted)] leading-relaxed font-sans max-w-2xl">
-              "Your personal AI companion — friendly, capable, and always listening. Designed with a blend of soft anime warmth, Indian classical grace, and retro-futuristic intelligence."
+            <p className="text-sm md:text-base text-slate-300 leading-relaxed font-sans max-w-2xl">
+              "Abhishek's personal AI assistant — loyal, intelligent, and agentic. Designed with an ultra-fast neural core, on-device vector memory, and automated desktop workspace workflows."
             </p>
 
-            <div className="pt-2 flex flex-wrap items-center justify-center md:justify-start gap-4 text-xs font-mono text-[var(--text-subtle)]">
+            <div className="pt-2 flex flex-wrap items-center justify-center md:justify-start gap-4 text-xs font-mono text-slate-400">
               <span className="flex items-center gap-1.5">
-                <ShieldCheck size={14} className="text-emerald-400" /> Private & Browser-Local
+                <ShieldCheck size={14} className="text-blue-400" /> Private & Local SQLite
               </span>
               <span className="flex items-center gap-1.5">
-                <Zap size={14} className="text-amber-400" /> Ultra-Low Latency (~200ms)
+                <Zap size={14} className="text-blue-400" /> Ultra-Low Latency (~200ms)
+              </span>
+              <span className="flex items-center gap-1.5">
+                <Brain size={14} className="text-blue-400" /> Dynamic RAG Knowledge
               </span>
               <span className="flex items-center gap-1.5">
                 <Heart size={14} className="text-rose-400" /> High Empathy Rapport
               </span>
             </div>
           </div>
-
-          {/* Affinity Dial Widget */}
           <div className="shrink-0 hidden lg:block">
             <RetroDial 
               value={affinityScore}

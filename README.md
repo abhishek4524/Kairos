@@ -64,7 +64,7 @@ Personal Assistant (Kairos)/
 │   ├── main.py                   # WebSocket stream router, VAD, Task queue
 │   ├── llm_agent.py              # Kairos Persona, Groq/NVIDIA LLM reasoning
 │   ├── tts_agent.py              # Male Neural Edge-TTS engine
-│   ├── db.py                     # SQLite / MongoDB conversation persistence
+│   ├── db.py                     # Local SQLite conversation persistence
 │   ├── chroma_db/                # ChromaDB vector store & embeddings
 │   └── agent_tools/              # Desktop automation tool registry
 ├── electron/                     # Electron Desktop Wrapper

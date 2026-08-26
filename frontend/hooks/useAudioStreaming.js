@@ -322,6 +322,17 @@ export function useAudioStreaming({
       wsRef.current.send(JSON.stringify({
         type: 'config_update',
         vad_sensitivity: sensitivity,
+        user_id: userIdRef.current,
+      }));
+    }
+  };
+
+  const updateSelectedDocs = (docIds) => {
+    if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+      wsRef.current.send(JSON.stringify({
+        type: 'update_selected_docs',
+        selected_doc_ids: docIds,
+        user_id: userIdRef.current,
       }));
     }
   };
@@ -334,5 +345,6 @@ export function useAudioStreaming({
     stopAndClearAudio,
     triggerIntro,
     updateVadSensitivity,
+    updateSelectedDocs,
   };
 }

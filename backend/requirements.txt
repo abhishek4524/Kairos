@@ -8,7 +8,6 @@ edge-tts
 pydub
 openai
 python-dotenv
-pymongo
 silero-vad
 webrtcvad-wheels
 chromadb

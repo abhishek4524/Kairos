@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   X, Brain, FileText, Pin, PinOff, Trash2, Upload, RefreshCw,
-  Clock, AlertCircle, CheckCircle, BookOpen, Sparkles, Database, ChevronDown
+  Clock, AlertCircle, CheckCircle, BookOpen, Sparkles, Database, Check
 } from 'lucide-react';
 import { neuralStateMachine } from '../../neural/neuralStateMachine';
 
@@ -20,25 +20,25 @@ function FactCard({ fact, onDelete, onTogglePin }) {
       initial={{ opacity: 0, y: 8 }}
       animate={{ opacity: 1, y: 0 }}
       exit={{ opacity: 0, scale: 0.95 }}
-      className={`glass-panel-warm rounded-2xl p-4 border transition-all ${
+      className={`glass-panel rounded-2xl p-4 border transition-all ${
         fact.pinned
-          ? 'border-amber-400/60 shadow-[0_4px_20px_rgba(245,197,96,0.15)]'
-          : 'border-[var(--border-gold-glow)]'
+          ? 'border-blue-500/60 bg-blue-950/20 shadow-[0_4px_20px_rgba(59,130,246,0.15)]'
+          : 'border-slate-800 hover:border-slate-700'
       }`}
     >
       <div className="flex items-start gap-3">
-        <div className={`mt-0.5 shrink-0 ${fact.pinned ? 'text-amber-400' : 'text-[var(--text-subtle)]'}`}>
+        <div className={`mt-0.5 shrink-0 ${fact.pinned ? 'text-blue-400' : 'text-slate-500'}`}>
           <Sparkles size={14} />
         </div>
-        <p className="flex-1 text-sm text-[var(--text-main)] leading-relaxed font-sans">{fact.content}</p>
+        <p className="flex-1 text-sm text-slate-100 leading-relaxed font-sans">{fact.content}</p>
         <div className="flex items-center gap-1.5 shrink-0">
           <button
             onClick={() => onTogglePin(fact.id, !fact.pinned)}
             title={fact.pinned ? 'Unpin memory' : 'Pin memory — always included in context'}
             className={`p-1.5 rounded-xl transition-all cursor-pointer ${
               fact.pinned
-                ? 'bg-amber-400/20 text-amber-400 hover:bg-amber-400/30'
-                : 'text-[var(--text-muted)] hover:text-amber-300 hover:bg-amber-400/10'
+                ? 'bg-blue-500/20 text-blue-300 hover:bg-blue-500/30'
+                : 'text-slate-400 hover:text-blue-300 hover:bg-blue-500/10'
             }`}
           >
             {fact.pinned ? <Pin size={13} /> : <PinOff size={13} />}
@@ -46,48 +46,73 @@ function FactCard({ fact, onDelete, onTogglePin }) {
           <button
             onClick={() => onDelete(fact.id)}
             title="Delete this memory"
-            className="p-1.5 rounded-xl text-[var(--text-muted)] hover:text-rose-400 hover:bg-rose-400/10 transition-all cursor-pointer"
+            className="p-1.5 rounded-xl text-slate-400 hover:text-red-400 hover:bg-red-500/10 transition-all cursor-pointer"
           >
             <Trash2 size={13} />
           </button>
         </div>
       </div>
-      <div className="mt-2 flex items-center gap-3 text-[10px] font-mono text-[var(--text-subtle)]">
+      <div className="mt-2 flex items-center gap-3 text-[10px] font-mono text-slate-500">
         <span className="flex items-center gap-1"><Clock size={10} /> {formatDate(fact.created_at)}</span>
         <span className="flex items-center gap-1">
           <BookOpen size={10} /> {fact.source || 'conversation'}
         </span>
         {fact.pinned && (
-          <span className="px-1.5 py-0.5 rounded bg-amber-400/20 text-amber-300 border border-amber-400/30">📌 PINNED</span>
+          <span className="px-1.5 py-0.5 rounded bg-blue-500/20 text-blue-300 border border-blue-500/30">📌 PINNED</span>
         )}
       </div>
     </motion.div>
   );
 }
 
-function DocRow({ doc, onDelete, userId }) {
+function DocRow({ doc, onDelete, userId, isSelected, onToggleSelect, allDocIds }) {
   return (
     <motion.div
       layout
       initial={{ opacity: 0, x: -8 }}
       animate={{ opacity: 1, x: 0 }}
       exit={{ opacity: 0, scale: 0.95 }}
-      className="glass-panel-warm rounded-2xl p-4 border border-[var(--border-gold-glow)] flex items-center gap-3"
+      className={`glass-panel rounded-2xl p-4 border flex items-center gap-3 transition-all ${
+        isSelected
+          ? 'border-blue-500/40 bg-blue-950/20 shadow-[0_0_15px_rgba(59,130,246,0.1)]'
+          : 'border-slate-800/80 bg-slate-900/40'
+      }`}
     >
-      <div className="p-2.5 rounded-xl bg-cyan-950/40 border border-cyan-500/30 text-cyan-400 shrink-0">
+      <div className="p-2.5 rounded-xl bg-blue-950/50 border border-blue-500/30 text-blue-400 shrink-0">
         <FileText size={18} />
       </div>
+      
       <div className="flex-1 min-w-0">
-        <div className="text-sm font-semibold font-mono text-[var(--text-main)] truncate">{doc.doc_name}</div>
-        <div className="text-[11px] font-mono text-[var(--text-muted)] mt-0.5 flex items-center gap-2">
-          <Database size={10} /> {doc.chunk_count} chunks
-          <Clock size={10} /> {formatDate(doc.created_at)}
+        <div className="text-sm font-semibold font-mono text-slate-100 truncate">{doc.doc_name}</div>
+        <div className="text-[11px] font-mono text-slate-400 mt-0.5 flex items-center gap-3">
+          <span className="flex items-center gap-1"><Database size={10} /> {doc.chunk_count} chunks</span>
+          <span className="flex items-center gap-1"><Clock size={10} /> {formatDate(doc.created_at)}</span>
         </div>
       </div>
+
+      {onToggleSelect && (
+        <button
+          onClick={() => onToggleSelect(doc.doc_id, allDocIds)}
+          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-mono font-semibold transition-all cursor-pointer border ${
+            isSelected
+              ? 'bg-blue-600/25 text-blue-200 border-blue-500/60 shadow-[0_0_12px_rgba(59,130,246,0.2)]'
+              : 'bg-slate-800/80 text-slate-400 border-slate-700 hover:border-slate-600'
+          }`}
+          title={isSelected ? 'Included in Chat RAG — click to exclude' : 'Excluded from Chat RAG — click to include'}
+        >
+          <div className={`w-3.5 h-3.5 rounded flex items-center justify-center text-[10px] ${
+            isSelected ? 'bg-blue-500 text-white' : 'bg-slate-700 text-slate-500'
+          }`}>
+            {isSelected ? <Check size={10} strokeWidth={3} /> : null}
+          </div>
+          <span>{isSelected ? 'Active in Chat' : 'Inactive'}</span>
+        </button>
+      )}
+
       <button
         onClick={() => onDelete(doc.doc_id)}
         title="Delete this document from memory"
-        className="p-2 rounded-xl text-[var(--text-muted)] hover:text-rose-400 hover:bg-rose-400/10 transition-all cursor-pointer shrink-0"
+        className="p-2 rounded-xl text-slate-400 hover:text-red-400 hover:bg-red-500/10 transition-all cursor-pointer shrink-0"
       >
         <Trash2 size={15} />
       </button>
@@ -95,12 +120,20 @@ function DocRow({ doc, onDelete, userId }) {
   );
 }
 
-export default function MemoryPanel({ onClose, userId, theme = 'dark' }) {
+export default function MemoryPanel({ 
+  onClose, 
+  userId, 
+  theme = 'dark',
+  selectedDocIds = null,
+  onToggleSelectDoc,
+  onSelectAllDocs,
+  onDeselectAllDocs
+}) {
   const [activeTab, setActiveTab] = useState('memories');
   const [facts, setFacts] = useState([]);
   const [documents, setDocuments] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
-  const [uploadStatus, setUploadStatus] = useState(null); // 'uploading' | 'success' | 'error'
+  const [uploadStatus, setUploadStatus] = useState(null); 
   const [uploadMsg, setUploadMsg] = useState('');
   const [isDragOver, setIsDragOver] = useState(false);
   const fileInputRef = useRef(null);
@@ -131,46 +164,37 @@ export default function MemoryPanel({ onClose, userId, theme = 'dark' }) {
     setIsLoading(false);
   };
 
-  useEffect(() => { refresh(); }, [userId]);
+  useEffect(() => {
+    refresh();
+  }, [userId]);
 
   const handleDeleteFact = async (factId) => {
-    await fetch(`${API}/api/memory/facts/${encodeURIComponent(factId)}`, { method: 'DELETE' });
+    await fetch(`${API}/api/memory/facts/${encodeURIComponent(factId)}?user_id=${encodeURIComponent(userId)}`, { method: 'DELETE' });
     setFacts(prev => prev.filter(f => f.id !== factId));
-    neuralStateMachine.onMemoryUpdate('deleted');
   };
 
   const handleTogglePin = async (factId, pinned) => {
-    await fetch(`${API}/api/memory/facts/${encodeURIComponent(factId)}/pin`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ pinned }),
-    });
+    await fetch(`${API}/api/memory/facts/${encodeURIComponent(factId)}/pin?user_id=${encodeURIComponent(userId)}&pinned=${pinned}`, { method: 'POST' });
     setFacts(prev => prev.map(f => f.id === factId ? { ...f, pinned } : f));
-    neuralStateMachine.onMemoryUpdate('updated');
   };
 
   const handleDeleteDoc = async (docId) => {
     await fetch(`${API}/api/memory/documents/${encodeURIComponent(docId)}?user_id=${encodeURIComponent(userId)}`, { method: 'DELETE' });
     setDocuments(prev => prev.filter(d => d.doc_id !== docId));
-    setFacts(prev => prev.filter(f => f.source !== docId));
-    neuralStateMachine.onMemoryUpdate('deleted');
   };
 
   const handleUpload = async (file) => {
     if (!file) return;
-    const allowed = ['.pdf', '.txt', '.md'];
-    const ext = '.' + file.name.split('.').pop().toLowerCase();
-    if (!allowed.includes(ext)) {
+    const ext = file.name.split('.').pop().toLowerCase();
+    if (!['pdf', 'txt', 'md'].includes(ext)) {
       setUploadStatus('error');
-      setUploadMsg('Only .pdf, .txt, and .md files are supported');
-      setTimeout(() => setUploadStatus(null), 4000);
+      setUploadMsg('Only .pdf, .txt, and .md files are supported.');
+      setTimeout(() => setUploadStatus(null), 3000);
       return;
     }
 
     setUploadStatus('uploading');
-    setUploadMsg(`Ingesting "${file.name}"...`);
-    neuralStateMachine.onRagIngestion(file.name, 6);
-
+    setUploadMsg(`Ingesting ${file.name}...`);
     const formData = new FormData();
     formData.append('file', file);
 
@@ -182,24 +206,23 @@ export default function MemoryPanel({ onClose, userId, theme = 'dark' }) {
       const data = await res.json();
       if (res.ok) {
         setUploadStatus('success');
-        setUploadMsg(`✓ Ingested "${data.doc_name}" — ${data.chunk_count} chunks stored`);
-        neuralStateMachine.onRagIngestion(data.doc_name, data.chunk_count);
-        await refresh();
+        setUploadMsg(`Ingested "${data.doc_name}" into ${data.chunks_stored} searchable chunks!`);
+        fetchDocs();
+        neuralStateMachine.onActionExecuted('document_ingested');
+        setTimeout(() => setUploadStatus(null), 4000);
       } else {
-        setUploadStatus('error');
-        setUploadMsg(data.detail || 'Ingestion failed');
-        neuralStateMachine.onError(data.detail || 'Ingestion failed');
+        throw new Error(data.detail || 'Ingestion failed');
       }
     } catch (e) {
       setUploadStatus('error');
-      setUploadMsg('Upload failed — is the backend running?');
-      neuralStateMachine.onError('Upload failed');
+      setUploadMsg(`Failed: ${e.message}`);
+      setTimeout(() => setUploadStatus(null), 4000);
     }
-    setTimeout(() => setUploadStatus(null), 5000);
   };
 
   const pinnedFacts = facts.filter(f => f.pinned);
   const unpinnedFacts = facts.filter(f => !f.pinned);
+  const allDocIds = documents.map(d => d.doc_id);
 
   return (
     <motion.div
@@ -212,15 +235,14 @@ export default function MemoryPanel({ onClose, userId, theme = 'dark' }) {
 
       <div className="max-w-4xl mx-auto relative z-10 space-y-6 pb-12">
 
-        {/* ── Header ────────────────────────────────────────────────── */}
-        <div className="flex items-center justify-between pb-4 border-b border-[var(--border-gold-glow)]">
+        <div className="flex items-center justify-between pb-4 border-b border-[var(--border-glass)]">
           <div className="flex items-center gap-3">
-            <div className="w-9 h-9 rounded-xl bg-gradient-to-tr from-violet-500 to-cyan-500 flex items-center justify-center shadow-[0_0_15px_rgba(139,92,246,0.4)]">
+            <div className="w-9 h-9 rounded-xl bg-blue-600 flex items-center justify-center shadow-[0_0_15px_rgba(59,130,246,0.4)]">
               <Brain size={18} className="text-white" />
             </div>
             <div>
-              <h1 className="text-base font-bold font-mono tracking-wider text-[var(--text-main)]">KAIROS // LONG-TERM MEMORY</h1>
-              <p className="text-[11px] font-mono text-[var(--text-muted)]">
+              <h1 className="text-base font-bold font-mono tracking-wider text-white">KAIROS // LONG-TERM MEMORY</h1>
+              <p className="text-[11px] font-mono text-slate-400">
                 {facts.length} facts · {documents.length} documents · ChromaDB
               </p>
             </div>
@@ -229,37 +251,35 @@ export default function MemoryPanel({ onClose, userId, theme = 'dark' }) {
             <button
               onClick={refresh}
               title="Refresh memory"
-              className="p-2.5 rounded-xl glass-panel border border-[var(--border-gold-glow)] text-[var(--text-muted)] hover:text-amber-300 transition-all cursor-pointer"
+              className="p-2.5 rounded-xl glass-panel border border-slate-700 text-slate-400 hover:text-blue-300 transition-all cursor-pointer"
             >
               <RefreshCw size={15} className={isLoading ? 'animate-spin' : ''} />
             </button>
             <button
               onClick={onClose}
-              className="p-2.5 rounded-xl glass-panel-warm border border-[var(--border-gold-glow)] text-[var(--text-main)] hover:text-rose-300 hover:bg-rose-500/10 transition-all cursor-pointer"
+              className="p-2.5 rounded-xl glass-panel border border-slate-700 text-slate-300 hover:text-red-300 hover:bg-red-500/10 transition-all cursor-pointer"
             >
               <X size={18} />
             </button>
           </div>
         </div>
 
-        {/* ── Stats Chips ─────────────────────────────────────────────── */}
         <div className="flex flex-wrap items-center gap-2.5">
-          <div className="px-3 py-1.5 rounded-full glass-panel-warm border border-amber-400/40 text-xs font-mono text-amber-300">
+          <div className="px-3 py-1.5 rounded-full glass-panel border border-blue-500/40 text-xs font-mono text-blue-300">
             📌 {pinnedFacts.length} Pinned
           </div>
-          <div className="px-3 py-1.5 rounded-full glass-panel border border-[var(--border-gold-glow)] text-xs font-mono text-[var(--text-muted)]">
+          <div className="px-3 py-1.5 rounded-full glass-panel border border-slate-700 text-xs font-mono text-slate-300">
             🧠 {facts.length} Memories
           </div>
-          <div className="px-3 py-1.5 rounded-full glass-panel border border-cyan-500/30 text-xs font-mono text-cyan-300">
+          <div className="px-3 py-1.5 rounded-full glass-panel border border-blue-500/30 text-xs font-mono text-blue-300">
             📄 {documents.length} Documents
           </div>
-          <div className="px-3 py-1.5 rounded-full glass-panel border border-emerald-500/30 text-xs font-mono text-emerald-300">
+          <div className="px-3 py-1.5 rounded-full glass-panel border border-sky-500/30 text-xs font-mono text-sky-300">
             ⚡ Auto-extracts from every turn
           </div>
         </div>
 
-        {/* ── Tabs ────────────────────────────────────────────────────── */}
-        <div className="flex gap-1 p-1 glass-panel rounded-2xl border border-[var(--border-gold-glow)] w-fit">
+        <div className="flex gap-1 p-1 glass-panel rounded-2xl border border-[var(--border-glass)] w-fit">
           {[
             { id: 'memories', label: 'Memories', icon: Brain },
             { id: 'documents', label: 'Documents', icon: FileText },
@@ -271,8 +291,8 @@ export default function MemoryPanel({ onClose, userId, theme = 'dark' }) {
                 onClick={() => setActiveTab(tab.id)}
                 className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-mono font-semibold transition-all cursor-pointer ${
                   activeTab === tab.id
-                    ? 'bg-amber-400/20 text-amber-300 border border-amber-400/40 shadow-[0_0_12px_rgba(245,197,96,0.15)]'
-                    : 'text-[var(--text-muted)] hover:text-[var(--text-main)]'
+                    ? 'bg-blue-600 text-white border border-blue-400 shadow-[0_0_12px_rgba(59,130,246,0.3)]'
+                    : 'text-slate-400 hover:text-white'
                 }`}
               >
                 <Icon size={13} />
@@ -282,7 +302,6 @@ export default function MemoryPanel({ onClose, userId, theme = 'dark' }) {
           })}
         </div>
 
-        {/* ── Memories Tab ─────────────────────────────────────────────── */}
         <AnimatePresence mode="wait">
           {activeTab === 'memories' && (
             <motion.div
@@ -293,21 +312,21 @@ export default function MemoryPanel({ onClose, userId, theme = 'dark' }) {
               className="space-y-4"
             >
               {isLoading ? (
-                <div className="text-center py-16 text-[var(--text-muted)] font-mono text-sm">
-                  <Brain size={32} className="mx-auto mb-3 animate-pulse text-violet-400" />
+                <div className="text-center py-16 text-slate-400 font-mono text-sm">
+                  <Brain size={32} className="mx-auto mb-3 animate-pulse text-blue-400" />
                   Loading memories from ChromaDB...
                 </div>
               ) : facts.length === 0 ? (
-                <div className="text-center py-16 text-[var(--text-muted)] font-mono text-sm glass-panel-warm rounded-3xl border border-[var(--border-gold-glow)] p-8">
-                  <Brain size={40} className="mx-auto mb-3 text-amber-400/40" />
-                  <p className="text-[var(--text-muted)]">No memories yet.</p>
-                  <p className="text-xs mt-1 text-[var(--text-subtle)]">Start a conversation — Kairos will automatically extract and remember facts about you.</p>
+                <div className="text-center py-16 text-slate-400 font-mono text-sm glass-panel rounded-3xl border border-[var(--border-glass)] p-8">
+                  <Brain size={40} className="mx-auto mb-3 text-blue-400/30" />
+                  <p className="text-slate-300">No memories yet.</p>
+                  <p className="text-xs mt-1 text-slate-500">Start a conversation — Kairos will automatically extract and remember facts about you.</p>
                 </div>
               ) : (
                 <div className="space-y-3">
                   {pinnedFacts.length > 0 && (
                     <div>
-                      <div className="text-[10px] font-mono uppercase tracking-widest text-amber-300 mb-2 flex items-center gap-1.5">
+                      <div className="text-[10px] font-mono uppercase tracking-widest text-blue-300 mb-2 flex items-center gap-1.5">
                         <Pin size={10} /> Pinned Memories — Always injected into context
                       </div>
                       <div className="space-y-2">
@@ -320,7 +339,7 @@ export default function MemoryPanel({ onClose, userId, theme = 'dark' }) {
 
                   {unpinnedFacts.length > 0 && (
                     <div>
-                      <div className="text-[10px] font-mono uppercase tracking-widest text-[var(--text-subtle)] mb-2 mt-4 flex items-center gap-1.5">
+                      <div className="text-[10px] font-mono uppercase tracking-widest text-slate-400 mb-2 mt-4 flex items-center gap-1.5">
                         <Brain size={10} /> All Memories — Retrieved by semantic search
                       </div>
                       <div className="space-y-2">
@@ -335,7 +354,6 @@ export default function MemoryPanel({ onClose, userId, theme = 'dark' }) {
             </motion.div>
           )}
 
-          {/* ── Documents Tab ─────────────────────────────────────────── */}
           {activeTab === 'documents' && (
             <motion.div
               key="documents"
@@ -344,7 +362,6 @@ export default function MemoryPanel({ onClose, userId, theme = 'dark' }) {
               exit={{ opacity: 0, y: -8 }}
               className="space-y-4"
             >
-              {/* Upload Dropzone */}
               <div
                 onDragOver={(e) => { e.preventDefault(); setIsDragOver(true); }}
                 onDragLeave={() => setIsDragOver(false)}
@@ -352,8 +369,8 @@ export default function MemoryPanel({ onClose, userId, theme = 'dark' }) {
                 onClick={() => fileInputRef.current?.click()}
                 className={`rounded-3xl border-2 border-dashed p-8 text-center cursor-pointer transition-all ${
                   isDragOver
-                    ? 'border-amber-400/80 bg-amber-400/10 shadow-[0_0_30px_rgba(245,197,96,0.2)]'
-                    : 'border-[var(--border-gold-glow)] hover:border-amber-400/50 glass-panel-warm'
+                    ? 'border-blue-400 bg-blue-500/10 shadow-[0_0_30px_rgba(59,130,246,0.2)]'
+                    : 'border-slate-800 hover:border-blue-500/50 glass-panel'
                 }`}
               >
                 <input
@@ -363,14 +380,13 @@ export default function MemoryPanel({ onClose, userId, theme = 'dark' }) {
                   className="hidden"
                   onChange={(e) => handleUpload(e.target.files[0])}
                 />
-                <Upload size={32} className={`mx-auto mb-3 ${isDragOver ? 'text-amber-400' : 'text-[var(--text-muted)]'}`} />
-                <p className="text-sm font-semibold font-mono text-[var(--text-main)]">
+                <Upload size={32} className={`mx-auto mb-3 ${isDragOver ? 'text-blue-400' : 'text-slate-400'}`} />
+                <p className="text-sm font-semibold font-mono text-white">
                   {isDragOver ? 'Drop to ingest' : 'Drag & drop or click to upload'}
                 </p>
-                <p className="text-xs text-[var(--text-muted)] mt-1">PDF, TXT, or Markdown — chunked, embedded & stored locally</p>
+                <p className="text-xs text-slate-400 mt-1">PDF, TXT, or Markdown — chunked, embedded & stored locally</p>
               </div>
 
-              {/* Upload Status Toast */}
               <AnimatePresence>
                 {uploadStatus && (
                   <motion.div
@@ -378,9 +394,9 @@ export default function MemoryPanel({ onClose, userId, theme = 'dark' }) {
                     animate={{ opacity: 1, y: 0 }}
                     exit={{ opacity: 0, y: -10 }}
                     className={`flex items-center gap-3 px-4 py-3 rounded-2xl border text-sm font-mono ${
-                      uploadStatus === 'uploading' ? 'border-cyan-500/40 bg-cyan-950/30 text-cyan-300' :
-                      uploadStatus === 'success'   ? 'border-emerald-500/40 bg-emerald-950/30 text-emerald-300' :
-                      'border-rose-500/40 bg-rose-950/30 text-rose-300'
+                      uploadStatus === 'uploading' ? 'border-blue-500/40 bg-blue-950/40 text-blue-300' :
+                      uploadStatus === 'success'   ? 'border-sky-500/40 bg-sky-950/40 text-sky-300' :
+                      'border-red-500/40 bg-red-950/40 text-red-300'
                     }`}
                   >
                     {uploadStatus === 'uploading' && <RefreshCw size={15} className="animate-spin shrink-0" />}
@@ -391,26 +407,58 @@ export default function MemoryPanel({ onClose, userId, theme = 'dark' }) {
                 )}
               </AnimatePresence>
 
-              {/* Documents List */}
+              {documents.length > 0 && (
+                <div className="flex items-center justify-between text-xs font-mono text-slate-400 px-1">
+                  <div className="flex items-center gap-1.5 uppercase tracking-wider">
+                    <Database size={12} className="text-blue-400" />
+                    <span>{documents.length} Documents in Knowledge Base</span>
+                  </div>
+                  {onSelectAllDocs && (
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={() => onSelectAllDocs(allDocIds)}
+                        className="px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-blue-600/20 text-slate-300 hover:text-blue-300 border border-slate-700 transition-all cursor-pointer"
+                      >
+                        Select All for Chat
+                      </button>
+                      <button
+                        onClick={() => onDeselectAllDocs && onDeselectAllDocs()}
+                        className="px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white border border-slate-700 transition-all cursor-pointer"
+                      >
+                        Deselect All
+                      </button>
+                    </div>
+                  )}
+                </div>
+              )}
+
               {isLoading ? (
-                <div className="text-center py-12 text-[var(--text-muted)] font-mono text-sm">
-                  <RefreshCw size={24} className="mx-auto mb-3 animate-spin text-cyan-400" />
+                <div className="text-center py-12 text-slate-400 font-mono text-sm">
+                  <RefreshCw size={24} className="mx-auto mb-3 animate-spin text-blue-400" />
                   Loading documents...
                 </div>
               ) : documents.length === 0 ? (
-                <div className="text-center py-10 text-[var(--text-muted)] font-mono text-sm glass-panel rounded-3xl border border-[var(--border-gold-glow)] p-8">
-                  <FileText size={36} className="mx-auto mb-3 text-cyan-400/30" />
+                <div className="text-center py-10 text-slate-400 font-mono text-sm glass-panel rounded-3xl border border-[var(--border-glass)] p-8">
+                  <FileText size={36} className="mx-auto mb-3 text-blue-400/30" />
                   <p>No documents ingested yet.</p>
-                  <p className="text-xs mt-1 text-[var(--text-subtle)]">Upload PDFs, notes, or markdown files to give Kairos reference knowledge.</p>
+                  <p className="text-xs mt-1 text-slate-500">Upload PDFs, notes, or markdown files to give Kairos reference knowledge.</p>
                 </div>
               ) : (
                 <div className="space-y-2.5">
-                  <div className="text-[10px] font-mono uppercase tracking-widest text-[var(--text-subtle)] mb-2 flex items-center gap-1.5">
-                    <Database size={10} /> {documents.length} Document{documents.length !== 1 ? 's' : ''} in Knowledge Base
-                  </div>
-                  {documents.map(doc => (
-                    <DocRow key={doc.doc_id} doc={doc} onDelete={handleDeleteDoc} userId={userId} />
-                  ))}
+                  {documents.map(doc => {
+                    const isSelected = selectedDocIds === null || selectedDocIds.includes(doc.doc_id);
+                    return (
+                      <DocRow 
+                        key={doc.doc_id} 
+                        doc={doc} 
+                        onDelete={handleDeleteDoc} 
+                        userId={userId} 
+                        isSelected={isSelected}
+                        onToggleSelect={onToggleSelectDoc}
+                        allDocIds={allDocIds}
+                      />
+                    );
+                  })}
                 </div>
               )}
             </motion.div>

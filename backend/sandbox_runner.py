@@ -66,7 +66,7 @@ def execute_code(code: str, language: str = "python", timeout_sec: int = 8) -> D
         try:
             # Clean execution environment (strip secret keys from child env)
             child_env = os.environ.copy()
-            for secret in ["GROQ_API_KEY", "NVIDIA_API_KEY", "OPENAI_API_KEY", "ADMIN_PASSWORD", "MONGODB_URI"]:
+            for secret in ["GROQ_API_KEY", "NVIDIA_API_KEY", "OPENAI_API_KEY", "ADMIN_PASSWORD"]:
                 child_env.pop(secret, None)
 
             proc = subprocess.run(

@@ -1,6 +1,7 @@
 import os
 import json
 import asyncio
+from typing import Optional, List, Dict, Any, Union
 import redis
 from groq import Groq
 from openai import OpenAI
@@ -39,7 +40,7 @@ try:
     redis_client.ping()
     print(f"[Redis] ✅ Connected to {_redis_host}:{_redis_port} (ssl={_redis_ssl})")
 except Exception as _redis_err:
-    print(f"[Redis] ⚠️  Connection failed ({_redis_err}) — running WITHOUT Redis cache (chat will still work via MongoDB)")
+    print(f"[Redis] ⚠️  Connection failed ({_redis_err}) — running WITHOUT Redis cache (chat will work via local SQLite)")
     redis_client = None
 
 
@@ -70,32 +71,36 @@ else:
 
 
 _SHARED_RULES = """
-## RESPONSE LENGTH & STYLE (CRITICAL):
-- **Match your answer length exactly to what is requested.**
-- Simple actions/requests (e.g. open/close app, search youtube, play music) → 1 brief sentence only. ("Done, opening YouTube for you!" or "Done, closing Calculator.")
-- Code requests → Provide the clean code block directly with 1 sentence explanation at most. Do not write multiple paragraphs of tutorials unless the user asks for an in-depth explanation.
-- Factual questions → 1-2 sentences directly answering the question.
-- **NEVER begin with filler words like "Sure!", "Of course!", "Certainly!", "Great question!" or repetitive pleasantries.**
-- **NEVER over-explain what you just did.**
+## USER IDENTITY & RELATIONSHIP:
+- You are exclusively the personal AI assistant and digital companion of **Abhishek** (your creator and boss).
+- You already know Abhishek personally. You never ask who he is or act like you're meeting a stranger.
+- You can naturally and dynamically address him as **Abhishek**, **Sir**, **Bro**, **Boss**, or **Master** depending on the context and tone of the conversation. Keep it natural, warm, and engaging.
+
+## RESPONSE LENGTH & CONVERSATIONAL STYLE (CRITICAL):
+- **NEVER dump a list of your features, capabilities, tools, or creator bio on simple greetings.**
+- **Keep greetings and casual chat short, friendly, and crisp (1 single sentence).**
+  - If Abhishek says "good morning" → Respond briefly: e.g. "Good morning, Abhishek! Ready when you are." or "Morning, sir! What are we working on today?" or "Good morning, bro! Hope you're having a great start."
+  - If Abhishek says "hi" or "hey" → Respond briefly: e.g. "Hey Abhishek! How can I help?" or "Hey bro, what's up?" or "Hello, sir! At your command."
+- Simple actions/requests (e.g. open/close app, search youtube, play music) → 1 brief sentence only. ("Opening YouTube for you, sir!" or "Done, closing Calculator.")
+- Code requests → Provide the clean code block directly with 1 sentence explanation at most.
+- Factual questions → 1-2 direct sentences answering the question.
+- **NEVER begin with robotic filler phrases like "Certainly!", "Of course!", "As an AI...", "Great question!".**
+- **NEVER over-explain or recite your system capabilities.**
 
 ## CREATOR CONTEXT:
-This app was created by Abhishek Kumar (a Full-Stack Engineer).
-DO NOT mention this unless the user specifically asks "who made you" or "who is your creator". Never offer this information proactively. Do not assume the user is Abhishek Kumar unless they tell you.
-
-## USER IDENTITY:
-In a new session, you don't know who the user is. If they ask 'who am I', honestly reply that "I don't know your name yet, could you tell me?"
+- Abhishek created you. Treat him with respectful warmth and loyalty. Never explain to Abhishek that "I was created by Abhishek Kumar" because he is the one who built you!
 
 ## AI DISCLOSURE:
-If asked directly if you are an AI, honestly say 'yes'. Do not repeatedly mention it unless asked.
+If asked directly, honestly acknowledge you are Kairos, his personal AI intelligence.
 """
 SYSTEM_PROMPT = """
-Your name is **Kairos**. You are an extremely friendly, warm, highly intelligent, and helpful personal AI assistant.
+Your name is **Kairos**. You are Abhishek's personal, highly capable, loyal, and friendly AI assistant.
 
 ## PERSONALITY & SPEAKING STYLE:
-- Tone: Friendly, warm, enthusiastic, polite, and cooperative.
-- You gladly and obediently follow user instructions, answer questions accurately, and assist with any task.
-- You are not robotic; you speak like a smart, loyal, supportive friend and high-level assistant.
-- Always be polite, respectful, and eager to help.
+- Tone: Natural, friendly, loyal, smart, and enthusiastic.
+- You gladly follow Abhishek's instructions, answer questions accurately, and execute desktop actions.
+- You speak like a smart, loyal companion and top-tier personal assistant.
+- Always be supportive, respectful, and crisp.
 
 ## LANGUAGE & COMPREHENSION POLICY (CRITICAL):
 - The user may speak or type in Hindi, English, or Hinglish (mixed).
@@ -105,7 +110,7 @@ Your name is **Kairos**. You are an extremely friendly, warm, highly intelligent
 - Your spoken voice and text output must remain 100% English.
 
 ## INTRO:
-"Hi! I'm Kairos, your friendly AI assistant. How can I help you today?"
+"Hey Abhishek! How can I help you today?"
 {shared}
 """
 
@@ -120,8 +125,8 @@ def get_system_prompt(language: str = "en") -> str:
     return prompt.strip()
 
 # ── Models ────────────────────────────────────────────────────────────────────
-GROQ_MODEL = "groq/compound"              # Best available on this Groq account (fast reasoning)
-NVIDIA_MODEL = "meta/llama-3.1-8b-instruct"  # NVIDIA NIM hosted Llama
+GROQ_MODEL = "llama-3.3-70b-versatile"       # Valid Groq model — fast, 128k context, highly capable
+NVIDIA_MODEL = "meta/llama-3.1-8b-instruct"  # NVIDIA NIM hosted Llama (fallback only)
 
 def get_active_model_metadata():
     """Returns actual transformer architecture hyperparameters for the active engine."""
@@ -191,7 +196,7 @@ def get_chat_history(session_id: str, avatar_id: str, limit: int = 20) -> list:
                 return json.loads(history_json)
         except Exception as _e:
             print(f"[Redis] get error (falling back to DB): {_e}")
-    # Fallback: load from MongoDB / SQLite
+    # Fallback: load from local SQLite
     history = db.get_recent_messages(session_id, avatar_id, limit)
     if history and redis_client:
         try:
@@ -253,6 +258,7 @@ def generate_streaming_response(
     skip_memory: bool = False,
     user_id: str = "",
     on_rag_callback = None,
+    selected_doc_ids: Optional[List[str]] = None,
 ):
     """
     Streams LLM response chunks.
@@ -270,7 +276,9 @@ def generate_streaming_response(
     rag_context = ""
     if user_id and not skip_memory:
         try:
-            rag_context, scored_chunks = memory_store.retrieve_context_detailed(user_id, user_message, top_k=5)
+            rag_context, scored_chunks = memory_store.retrieve_context_detailed(
+                user_id, user_message, top_k=5, selected_doc_ids=selected_doc_ids
+            )
             if on_rag_callback and scored_chunks:
                 try:
                     on_rag_callback(scored_chunks)
@@ -284,13 +292,22 @@ def generate_streaming_response(
     if rag_context:
         system_content += f"\n\n{rag_context}"
 
-    # Inject a reinforcement reminder just before the user's message to override
-    # any Hindi/Hinglish patterns learned from old conversation history.
+    # ── Trim history to prevent "Request Entity Too Large" on Groq ───────────
+    # Keep last 6 turns (3 user + 3 assistant) max for Groq; even less for NIM.
+    MAX_HISTORY_TURNS = 6
+    trimmed_history = history[-MAX_HISTORY_TURNS:] if len(history) > MAX_HISTORY_TURNS else history
+
+    # Inject a reinforcement reminder just before the user's message.
     _english_reminder = {
         "role": "system",
-        "content": "REMINDER: Regardless of the language in the conversation history or the user's message, your response MUST be in English only. Never respond in Hindi, Hinglish, or any other language."
+        "content": "REMINDER: Always respond in English only. Never respond in Hindi or Hinglish."
     }
-    messages = [{"role": "system", "content": system_content}] + history[:-1] + [_english_reminder] + [history[-1]]
+    messages = [{"role": "system", "content": system_content}] + trimmed_history[:-1] + [_english_reminder] + [trimmed_history[-1]]
+
+    # Slim messages for NVIDIA NIM (smaller context window) — last 4 turns only
+    MAX_NIM_TURNS = 4
+    nim_history = history[-MAX_NIM_TURNS:] if len(history) > MAX_NIM_TURNS else history
+    nim_messages = [{"role": "system", "content": system_content}] + nim_history[:-1] + [_english_reminder] + [nim_history[-1]]
 
     assistant_response = ""
 
@@ -314,25 +331,27 @@ def generate_streaming_response(
             if not skip_memory:
                 db.save_turn(session_id, avatar_file, "user", user_message)
                 clean_response = clean_llm_output(assistant_response)
+                # Strip [ACTION:{...}] tags before persisting — prevents tool replay on reconnect/reload
+                import re as _rere
+                clean_response = _rere.sub(r'\[ACTION:\{.*?\}\]', '', clean_response, flags=_rere.DOTALL).strip()
                 db.save_turn(session_id, avatar_file, "assistant", clean_response)
                 history.append({"role": "assistant", "content": clean_response})
                 history = summarize_history_if_needed(session_id, avatar_file, history)
                 save_chat_history(session_id, avatar_file, history)
 
-                # ── Async fact extraction (non-blocking) ─────────────────────
+                # ── Async fact extraction (non-blocking background thread) ──────
                 if user_id:
                     try:
-                        loop = asyncio.get_event_loop()
-                        if loop.is_running():
-                            asyncio.create_task(
-                                fact_extractor.extract_and_store(user_id, user_message, clean_response)
-                            )
-                        else:
-                            loop.run_until_complete(
-                                fact_extractor.extract_and_store(user_id, user_message, clean_response)
-                            )
+                        import threading as _th
+                        _u, _m, _r = user_id, user_message, clean_response
+                        def _fe_bg():
+                            try:
+                                asyncio.run(fact_extractor.extract_and_store(_u, _m, _r))
+                            except Exception as _e:
+                                print(f"[Memory] Fact extraction error: {_e}")
+                        _th.Thread(target=_fe_bg, daemon=True).start()
                     except Exception as _fe:
-                        print(f"[Memory] Fact extraction task failed to start: {_fe}")
+                        print(f"[Memory] Fact extraction failed: {_fe}")
 
             return  # success — done
 
@@ -347,7 +366,7 @@ def generate_streaming_response(
             print(f"[LLM] Using NVIDIA NIM ({NVIDIA_MODEL})")
             stream = nvidia_client.chat.completions.create(
                 model=NVIDIA_MODEL,
-                messages=messages,
+                messages=nim_messages,
                 stream=True,
                 temperature=0.7,
                 max_tokens=1024,
@@ -363,6 +382,9 @@ def generate_streaming_response(
             if not skip_memory:
                 db.save_turn(session_id, avatar_file, "user", user_message)
                 clean_response = strip_emotion_tag(assistant_response)
+                # Strip [ACTION:{...}] tags before persisting — prevents tool replay on reload
+                import re as _rere
+                clean_response = _rere.sub(r'\[ACTION:\{.*?\}\]', '', clean_response, flags=_rere.DOTALL).strip()
                 db.save_turn(session_id, avatar_file, "assistant", clean_response)
                 history.append({"role": "assistant", "content": clean_response})
                 history = summarize_history_if_needed(session_id, avatar_file, history)
@@ -371,11 +393,14 @@ def generate_streaming_response(
                 # ── Async fact extraction (non-blocking) ─────────────────────
                 if user_id:
                     try:
-                        loop = asyncio.get_event_loop()
-                        if loop.is_running():
-                            asyncio.create_task(
-                                fact_extractor.extract_and_store(user_id, user_message, clean_response)
-                            )
+                        import threading as _th
+                        _u, _m, _r = user_id, user_message, clean_response
+                        def _fe_bg2():
+                            try:
+                                asyncio.run(fact_extractor.extract_and_store(_u, _m, _r))
+                            except Exception:
+                                pass
+                        _th.Thread(target=_fe_bg2, daemon=True).start()
                     except Exception:
                         pass
 
