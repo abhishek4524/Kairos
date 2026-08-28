@@ -59,33 +59,107 @@ def _get_edge_voice(language: str = "en") -> tuple[str, int, int]:
     return voice, 0, +10
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Edge-TTS generator
+# Edge-TTS generator with SSML emotional prosody
 # ─────────────────────────────────────────────────────────────────────────────
-async def _generate_edge_audio(text: str, language: str = "en") -> bytes:
-    voice, base_pitch, base_rate = _get_edge_voice(language)
-    
-    rate = f"{base_rate:+}%"
-    pitch = f"{base_pitch:+}Hz"
-        
-    print(f"[EDGE-TTS Male] voice={voice}, lang={language}, rate={rate}, pitch={pitch}")
-    communicate = edge_tts.Communicate(text=text, voice=voice, rate=rate, pitch=pitch)
+
+from tts_emotion_profiles import get_emotion_profile
+
+
+def _build_ssml(text: str, voice: str, emotion: str = "neutral") -> str:
+    """
+    Wraps text in Edge-TTS compatible SSML with prosody tags from the emotion profile.
+    Falls back to neutral profile if emotion is unrecognized.
+    """
+    profile = get_emotion_profile(emotion)
+    rate   = profile["rate"]
+    pitch  = profile["pitch"]
+    volume = profile["volume"]
+
+    # Escape XML reserved characters
+    safe_text = (
+        text.replace("&", "&amp;")
+            .replace("<", "&lt;")
+            .replace(">", "&gt;")
+            .replace('"', "&quot;")
+            .replace("'", "&apos;")
+    )
+
+    ssml = (
+        '<speak version="1.0" xmlns="http://www.w3.org/2001/10/synthesis" '
+        'xmlns:mstts="https://www.w3.org/2001/mstts" xml:lang="en-US">'
+        f'<voice name="{voice}">'
+        f'<prosody rate="{rate}" pitch="{pitch}" volume="{volume}">'
+        f'{safe_text}'
+        '</prosody>'
+        '</voice>'
+        '</speak>'
+    )
+    return ssml
+
+
+async def _generate_edge_audio(
+    text: str,
+    language: str = "en",
+    emotion: str = "neutral",
+) -> bytes:
+    """Generates audio via Edge-TTS with emotional prosody (rate, pitch, volume) applied."""
+    voice, _base_pitch, _base_rate = _get_edge_voice(language)
+    profile = get_emotion_profile(emotion)
+
+    rate   = profile["rate"]
+    pitch  = profile["pitch"]
+    volume = profile["volume"]
+
+    print(
+        f"[EDGE-TTS Male] voice={voice}, lang={language}, emotion={emotion}, "
+        f"rate={rate}, pitch={pitch}, volume={volume}"
+    )
+
+    communicate = edge_tts.Communicate(
+        text=text,
+        voice=voice,
+        rate=rate,
+        pitch=pitch,
+        volume=volume,
+    )
     byte_io = io.BytesIO()
     async for chunk in communicate.stream():
         if chunk["type"] == "audio":
             byte_io.write(chunk["data"])
     audio_bytes = byte_io.getvalue()
+
     if not audio_bytes:
-        raise RuntimeError(f"Edge-TTS returned 0 bytes for voice={voice}")
+        # Fallback: try plain text with default neutral prosody rather than failing
+        print(f"[EDGE-TTS] Prosody generation returned 0 bytes (emotion={emotion}), retrying with default neutral...")
+        communicate_plain = edge_tts.Communicate(text=text, voice=voice, rate="+10%", pitch="+0Hz", volume="+0%")
+        byte_io2 = io.BytesIO()
+        async for chunk in communicate_plain.stream():
+            if chunk["type"] == "audio":
+                byte_io2.write(chunk["data"])
+        audio_bytes = byte_io2.getvalue()
+
+    if not audio_bytes:
+        raise RuntimeError(f"Edge-TTS returned 0 bytes for voice={voice}, emotion={emotion}")
 
     return audio_bytes
+
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Main async TTS function (returns audio_bytes)
 # ─────────────────────────────────────────────────────────────────────────────
-async def generate_audio_async(text: str, language: str = "en", emotion: str = "neutral", avatar: str = "kavya") -> tuple[bytes, None]:
+async def generate_audio_async(
+    text: str,
+    language: str = "en",
+    emotion: str = "neutral",
+    avatar: str = "kavya",
+) -> tuple[bytes, None]:
     """
-    Edge-TTS high-quality male voice generation.
+    Edge-TTS high-quality male voice generation with SSML emotional prosody.
     Returns (audio_bytes, None) for backward-compatible call signatures.
+
+    emotion: any label from tts_emotion_profiles.EMOTION_PROFILES.
+             Unrecognized labels silently fall back to 'neutral'.
     """
-    audio_bytes = await _generate_edge_audio(text, language)
+    audio_bytes = await _generate_edge_audio(text, language, emotion)
     return audio_bytes, None
+

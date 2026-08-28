@@ -12,12 +12,18 @@ warnings.filterwarnings("ignore", category=FutureWarning)
 warnings.filterwarnings("ignore", category=UserWarning)
 
 from transcriber import RealTimeTranscriber
-from llm_agent import generate_streaming_response, clean_llm_output
+from llm_agent import generate_streaming_response, clean_llm_output, parse_emotion_tag
 from tts_agent import generate_audio_async
 import db
 import memory_store
 import document_pipeline
 from agent_tools.executor import execute_tool, extract_action, strip_action_tag
+from config import platform_paths
+import platform
+import agent_loop as _agent_loop
+from agent_loop import classify_complexity, run_agentic_loop, ConfirmationRequired, AgentLoopResult
+from agents.orchestrator import orchestrate
+
 
 from dotenv import load_dotenv
 load_dotenv()
@@ -37,8 +43,24 @@ from fastapi.middleware.cors import CORSMiddleware
 SESSION_LANGUAGES = {}
 SESSION_USER_IDS = {}  # session_id -> nanban_user_id (browser-local anonymous ID)
 SESSION_SELECTED_DOCS = {}  # session_id / user_id -> list of selected doc_ids (or None for all)
+# Stores paused agentic-loop state when a mid-plan step needs user confirmation.
+# Key: action_id  Value: {"session_id", "pending_steps", "records", "user_message", "history", "lang", "ws_emit_fn", "execute_fn"}
+SESSION_PLAN_STATE: dict = {}
+
 
 app = FastAPI()
+
+@app.on_event("startup")
+def startup_platform_check():
+    print(f"\n[Kairos] Detected OS: {platform_paths.SYSTEM} ({platform.machine()})")
+    exec_checks = platform_paths.check_required_executables()
+    for key, info in exec_checks.items():
+        if info["found"]:
+            print(f"[Kairos] ✅ {info['name']}: {info['path']}")
+        else:
+            print(f"[Kairos] ⚠️  WARNING: {info['name']} was not found automatically on this {platform_paths.SYSTEM} system.")
+            print(f"          ➜ Solution: {info['help']}")
+    print()
 
 def _normalize_cors_origin(origin):
     origin = origin.strip()
@@ -88,6 +110,63 @@ def delete_history_session(session_id: str):
     """Delete a single session from chat history."""
     db.clear_history(session_id)
     return {"success": True, "deleted_session": session_id}
+
+@app.post("/api/tools/confirm")
+def confirm_tool_action(data: dict):
+    """Explicitly confirms or declines a pending destructive or communication action.
+    If the action belongs to a paused agentic loop plan, the remaining steps are resumed
+    synchronously in the background after confirmation.
+    """
+    from agent_tools.executor import confirm_pending_action
+    import threading
+
+    action_id = data.get("action_id", "")
+    reply = data.get("reply", "yes")
+
+    # Execute the confirmed / declined action
+    result = confirm_pending_action(action_id, reply)
+
+    # Check if there is a paused plan waiting on this action_id
+    plan_state = SESSION_PLAN_STATE.pop(action_id, None)
+    if plan_state and result.get("success") and reply.lower() in ("yes", "confirm", "ok", "sure"):
+        # Resume the remaining plan steps in a background thread
+        from llm_agent import groq_client, LOOP_MODEL, get_chat_history
+        pending_steps = plan_state["pending_steps"]
+        user_message = plan_state["user_message"]
+        history = plan_state.get("history", [])
+        emit_fn = plan_state.get("emit_fn")  # may be None when resumed outside WS context
+
+        def _resume():
+            import logging
+            _log = logging.getLogger("kairos.agent_loop.resume")
+            _log.info("[RESUME] Resuming %d pending steps after confirmation %s", len(pending_steps), action_id)
+            try:
+                from agent_loop import run_agentic_loop, ConfirmationRequired
+                loop_result = run_agentic_loop(
+                    user_message=user_message,
+                    history=history,
+                    groq_client=groq_client,
+                    model=LOOP_MODEL,
+                    emit_event_fn=emit_fn or (lambda e, p: None),
+                    execute_fn=execute_tool,
+                )
+                _log.info("[RESUME] Loop completed: exhausted=%s", loop_result.exhausted)
+            except ConfirmationRequired as cr:
+                # Another step in the resumed plan needs confirmation — re-park it
+                SESSION_PLAN_STATE[cr.action_id] = {
+                    "pending_steps": cr.pending_steps,
+                    "user_message": user_message,
+                    "history": history,
+                    "emit_fn": emit_fn,
+                    "records": cr.records,
+                }
+            except Exception as exc:
+                _log.error("[RESUME] Error resuming plan: %s", exc)
+
+        threading.Thread(target=_resume, daemon=True).start()
+
+    return result
+
 
 @app.get("/api/system/metrics")
 def get_system_metrics():
@@ -369,28 +448,67 @@ async def audio_stream(websocket: WebSocket, session_id: str = "default_session"
             )
 
         active_selected_docs = SESSION_SELECTED_DOCS.get(session_id, None) or SESSION_SELECTED_DOCS.get(effective_user_id, None)
+
+        from llm_agent import groq_client, GROQ_MODEL, get_chat_history
+
+        history_snap = get_chat_history(memory_id, "avatar.vrm") if not skip_memory else []
+
+        def emit_sync(event_name: str, payload: dict):
+            """Thread-safe emit: routes neural_event to WebSocket from background thread."""
+            ws_payload = {
+                "type": "neural_event",
+                "event": event_name,
+                "timestamp": time.time(),
+                **payload,
+            }
+            asyncio.run_coroutine_threadsafe(safe_send_json(ws_payload), loop)
+
         def producer():
             try:
-                for c in generate_streaming_response(
-                    memory_id, u_text, "avatar.vrm", lang,
-                    skip_memory=skip_memory,
+                orch_res = orchestrate(
+                    session_id=memory_id,
+                    user_message=u_text,
+                    history=history_snap,
+                    groq_client=groq_client,
+                    model=GROQ_MODEL,
+                    emit_event_fn=emit_sync,
+                    execute_fn=execute_tool,
                     user_id=effective_user_id,
+                    skip_memory=skip_memory,
                     on_rag_callback=on_rag_results_found,
                     selected_doc_ids=active_selected_docs,
-                ):
-                    if stop_event.is_set():
-                        break
-                    asyncio.run_coroutine_threadsafe(q.put(c), loop)
+                )
+                if orch_res.get("mode") == "loop":
+                    asyncio.run_coroutine_threadsafe(q.put(orch_res.get("narration", "")), loop)
+                else:
+                    for chunk in orch_res.get("chunks", []):
+                        if stop_event.is_set():
+                            break
+                        asyncio.run_coroutine_threadsafe(q.put(chunk), loop)
+            except ConfirmationRequired as cr:
+                SESSION_PLAN_STATE[cr.action_id] = {
+                    "pending_steps": cr.pending_steps,
+                    "user_message": u_text,
+                    "history": history_snap,
+                    "emit_fn": emit_sync,
+                    "records": cr.records,
+                }
+                print(f"[LOOP] paused — confirmation required: action_id={cr.action_id}")
             except Exception as prod_err:
                 print(f"[PRODUCER ERROR] {prod_err}")
+                asyncio.run_coroutine_threadsafe(
+                    q.put(f"[Error: Orchestrator processing failed: {prod_err}]"), loop
+                )
             finally:
                 asyncio.run_coroutine_threadsafe(q.put(None), loop)
 
         threading.Thread(target=producer, daemon=True).start()
 
+
         sentence_buffer = ""
         full_response_acc = ""
-        emotion = None
+        emotion_label = "neutral"           # resolved once, used for all TTS chunks
+        emotion_resolved = False            # flag to extract only once
         first_sentence_sent = False
         generation_event_sent = False
         in_reasoning_block = False
@@ -434,6 +552,24 @@ async def audio_stream(websocket: WebSocket, session_id: str = "default_session"
                     full_response_acc += chunk
                     sentence_buffer += chunk
 
+                # ── Emotion tag extraction (once, as soon as [EMOTION:...] is in buffer) ──
+                if not emotion_resolved and "[EMOTION:" in full_response_acc:
+                    _emo_label, _after = parse_emotion_tag(full_response_acc)
+                    # Only resolve if the closing ] is present (tag is complete)
+                    if "]" in full_response_acc.split("[EMOTION:", 1)[1].split("\n")[0]:
+                        emotion_label = _emo_label
+                        emotion_resolved = True
+                        # Strip [EMOTION:...] tag from both accumulators so it never reaches TTS/chat
+                        full_response_acc = _after
+                        sentence_buffer = _after
+                        # Emit emotion event to frontend for neural core visual overlay
+                        await safe_send_json({
+                            "type": "emotion_update",
+                            "emotion": emotion_label,
+                            "timestamp": time.time(),
+                        })
+                        print(f"[EMOTION] Detected: {emotion_label}")
+
                 if not generation_event_sent:
                     generation_event_sent = True
                     await safe_send_json({
@@ -467,12 +603,12 @@ async def audio_stream(websocket: WebSocket, session_id: str = "default_session"
                         })
                         first_sentence_sent = True
 
-                        # Clean sentence for TTS
+                        # Clean sentence for TTS — pass resolved emotion label
                         tts_sentence = clean_for_tts(sentence)
                         # Safety guard: skip if ACTION tag content still leaks through
                         if tts_sentence and 'tool' not in tts_sentence and '[ACTION' not in tts_sentence:
-                            print(f"[TTS CHUNK Male] {tts_sentence}")
-                            audio_bytes, _ = await generate_audio_async(tts_sentence, "en")
+                            print(f"[TTS CHUNK Male] emotion={emotion_label} | {tts_sentence}")
+                            audio_bytes, _ = await generate_audio_async(tts_sentence, "en", emotion_label)
                             if audio_bytes:
                                 await safe_send_bytes(audio_bytes)
 
@@ -492,8 +628,8 @@ async def audio_stream(websocket: WebSocket, session_id: str = "default_session"
                 tts_sentence = clean_for_tts(sentence)
                 # Safety guard: skip if ACTION tag content still leaks through
                 if tts_sentence and 'tool' not in tts_sentence and '[ACTION' not in tts_sentence:
-                    print(f"[TTS CHUNK Male] {tts_sentence}")
-                    audio_bytes, _ = await generate_audio_async(tts_sentence, "en")
+                    print(f"[TTS CHUNK Male] emotion={emotion_label} | {tts_sentence}")
+                    audio_bytes, _ = await generate_audio_async(tts_sentence, "en", emotion_label)
                     if audio_bytes:
                         await safe_send_bytes(audio_bytes)
 
@@ -502,7 +638,6 @@ async def audio_stream(websocket: WebSocket, session_id: str = "default_session"
             if action_data:
                 tool_name = action_data.get("tool", "")
                 tool_params = action_data.get("params", {})
-                is_sensitive_tool = tool_name == "check_whatsapp_notifications"
 
                 await safe_send_json({
                     "type": "neural_event",
@@ -512,40 +647,83 @@ async def audio_stream(websocket: WebSocket, session_id: str = "default_session"
                     "timestamp": time.time(),
                 })
 
-                if not is_sensitive_tool:
-                    print(f"[TOOL] Executing: {tool_name} params={tool_params}")
-                    result = execute_tool(tool_name, tool_params)
-                    print(f"[TOOL] Result: {result}")
+                print(f"[TOOL] Executing: {tool_name} params={tool_params}")
+                result = execute_tool(tool_name, tool_params)
+                print(f"[TOOL] Result: {result}")
+
+                if result.get("requires_confirmation"):
+                    await safe_send_json({
+                        "type": "tool_confirm",
+                        "tool": tool_name,
+                        "action_id": result.get("action_id"),
+                        "confirmation_type": result.get("confirmation_type"),
+                        "prompt": result.get("confirmation_prompt"),
+                        "summary": result.get("message"),
+                        "target": result.get("target_summary"),
+                    })
+                elif result.get("security_alert"):
+                    await safe_send_json({
+                        "type": "security_alert",
+                        "tool": tool_name,
+                        "message": result.get("message"),
+                        "timestamp": time.time(),
+                    })
                     await safe_send_json({
                         "type": "tool_result",
                         "tool": tool_name,
-                        "success": result["success"],
-                        "message": result["message"],
+                        "success": False,
+                        "message": result.get("message", ""),
                     })
                     await safe_send_json({
                         "type": "neural_event",
                         "event": "TOOL_COMPLETED",
                         "toolName": tool_name,
-                        "success": result["success"],
-                        "message": result["message"],
+                        "success": False,
+                        "message": result.get("message", ""),
                         "timestamp": time.time(),
                     })
                 else:
+                    is_ok = result.get("success", False)
+                    res_msg = result.get("message", "")
                     await safe_send_json({
-                        "type": "tool_confirm",
+                        "type": "tool_result",
                         "tool": tool_name,
-                        "params": tool_params,
-                        "summary": action_data.get("summary", f"Execute {tool_name}"),
+                        "success": is_ok,
+                        "message": res_msg,
+                        "confirmation": result.get("confirmation"),
                     })
+                    await safe_send_json({
+                        "type": "neural_event",
+                        "event": "TOOL_COMPLETED",
+                        "toolName": tool_name,
+                        "success": is_ok,
+                        "message": res_msg,
+                        "confirmation": result.get("confirmation"),
+                        "timestamp": time.time(),
+                    })
+
+                    # If tool failed after optimistic text was spoken, speak the specific failure reason
+                    if not is_ok and res_msg and not result.get("requires_confirmation"):
+                        failure_tts = clean_for_tts(res_msg)
+                        if failure_tts:
+                            print(f"[TTS CHUNK Failure Feedback] {failure_tts}")
+                            audio_bytes, _ = await generate_audio_async(failure_tts, "en", "concerned")
+                            if audio_bytes:
+                                await safe_send_bytes(audio_bytes)
 
             # Final transcription message with clean text
             if full_response_acc:
                 clean_full_text = clean_llm_output(full_response_acc)
+                # If tool failed, append specific diagnostic message to chat transcription
+                if action_data and result and not result.get("success") and result.get("message"):
+                    if not result.get("requires_confirmation") and not result.get("security_alert"):
+                        clean_full_text += f"\n\n⚠️ {result.get('message')}"
+
                 await safe_send_json({
                     "type": "transcription",
                     "role": "assistant",
                     "text": clean_full_text,
-                    "emotion": emotion or "neutral",
+                    "emotion": emotion_label or "neutral",
                     "language": lang,
                 })
 

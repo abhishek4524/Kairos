@@ -90,6 +90,30 @@ def _init_tables():
             chunk_count INTEGER DEFAULT 0,
             created_at  REAL NOT NULL
         );
+
+        CREATE TABLE IF NOT EXISTS kg_entities (
+            id          INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id     TEXT NOT NULL,
+            name        TEXT NOT NULL,
+            type        TEXT NOT NULL,
+            created_at  REAL NOT NULL,
+            UNIQUE(user_id, name)
+        );
+        CREATE INDEX IF NOT EXISTS idx_kg_entities_user_name ON kg_entities(user_id, name);
+
+        CREATE TABLE IF NOT EXISTS kg_relations (
+            id             INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id        TEXT NOT NULL,
+            source_entity  TEXT NOT NULL,
+            relation       TEXT NOT NULL,
+            target_entity  TEXT NOT NULL,
+            confidence     REAL DEFAULT 1.0,
+            source_fact_id TEXT,
+            created_at     REAL NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS idx_kg_rel_src ON kg_relations(user_id, source_entity);
+        CREATE INDEX IF NOT EXISTS idx_kg_rel_tgt ON kg_relations(user_id, target_entity);
+        CREATE INDEX IF NOT EXISTS idx_kg_rel_fact ON kg_relations(user_id, source_fact_id);
     """)
     con.commit()
     con.close()
@@ -97,10 +121,159 @@ def _init_tables():
 _init_tables()
 
 
+# ── Knowledge Graph Helpers ───────────────────────────────────────────────────
+
+def save_graph_elements(
+    user_id: str,
+    fact_id: str,
+    entities: Optional[List[Dict]] = None,
+    relations: Optional[List[Dict]] = None,
+):
+    """Stores extracted entities and relations into SQLite graph tables."""
+    now = time.time()
+    con = _conn()
+
+    if entities:
+        for ent in entities:
+            name = str(ent.get("name", "")).strip()
+            etype = str(ent.get("type", "concept")).strip().lower()
+            if name:
+                con.execute(
+                    "INSERT OR IGNORE INTO kg_entities (user_id, name, type, created_at) VALUES (?,?,?,?)",
+                    (user_id, name, etype, now),
+                )
+
+    if relations:
+        for rel in relations:
+            src = str(rel.get("source", "") or rel.get("source_entity", "")).strip()
+            r_type = str(rel.get("relation", "")).strip().lower().replace(" ", "_")
+            tgt = str(rel.get("target", "") or rel.get("target_entity", "")).strip()
+            conf = float(rel.get("confidence", 1.0))
+            if src and r_type and tgt:
+                con.execute(
+                    "INSERT INTO kg_relations (user_id, source_entity, relation, target_entity, confidence, source_fact_id, created_at) VALUES (?,?,?,?,?,?,?)",
+                    (user_id, src, r_type, tgt, conf, fact_id, now),
+                )
+
+    con.commit()
+    con.close()
+
+
+def get_relations_for_fact(fact_id: str) -> List[Dict]:
+    """Returns all relations created from a specific fact_id."""
+    con = _conn()
+    rows = con.execute(
+        "SELECT id, source_entity, relation, target_entity, confidence FROM kg_relations WHERE source_fact_id=?",
+        (fact_id,),
+    ).fetchall()
+    con.close()
+    return [
+        {
+            "id": r[0],
+            "source": r[1],
+            "relation": r[2],
+            "target": r[3],
+            "confidence": r[4],
+        }
+        for r in rows
+    ]
+
+
+def get_all_entities(user_id: str) -> List[Dict]:
+    """Returns all known entities for a user."""
+    con = _conn()
+    rows = con.execute(
+        "SELECT id, name, type, created_at FROM kg_entities WHERE user_id=? ORDER BY name ASC",
+        (user_id,),
+    ).fetchall()
+    con.close()
+    return [{"id": r[0], "name": r[1], "type": r[2], "created_at": r[3]} for r in rows]
+
+
+def get_graph_neighborhood(
+    user_id: str, entity_names: List[str], max_hops: int = 2
+) -> List[Dict]:
+    """
+    Performs 1-hop and 2-hop graph traversals from a set of starting entity names.
+    Returns relation dicts with 'hop' depth indicator.
+    """
+    if not entity_names:
+        return []
+
+    con = _conn()
+    seen_rel_ids = set()
+    results = []
+
+    # 1-Hop Traversal
+    hop1_entities = set(e.strip().lower() for e in entity_names if e.strip())
+    if not hop1_entities:
+        con.close()
+        return []
+
+    placeholders = ",".join("?" for _ in hop1_entities)
+    params = [user_id] + list(hop1_entities) + list(hop1_entities)
+    query_1hop = f"""
+        SELECT id, source_entity, relation, target_entity, confidence, source_fact_id
+        FROM kg_relations
+        WHERE user_id = ? AND (LOWER(source_entity) IN ({placeholders}) OR LOWER(target_entity) IN ({placeholders}))
+    """
+    rows_1hop = con.execute(query_1hop, params).fetchall()
+
+    next_entities = set()
+    for r in rows_1hop:
+        rid, src, rel, tgt, conf, fid = r
+        if rid not in seen_rel_ids:
+            seen_rel_ids.add(rid)
+            results.append({
+                "id": rid,
+                "source": src,
+                "relation": rel,
+                "target": tgt,
+                "confidence": conf,
+                "source_fact_id": fid,
+                "hop": 1,
+            })
+            next_entities.add(src.lower())
+            next_entities.add(tgt.lower())
+
+    # 2-Hop Traversal (if max_hops >= 2)
+    if max_hops >= 2 and next_entities:
+        p_2hop = ",".join("?" for _ in next_entities)
+        params_2hop = [user_id] + list(next_entities) + list(next_entities)
+        query_2hop = f"""
+            SELECT id, source_entity, relation, target_entity, confidence, source_fact_id
+            FROM kg_relations
+            WHERE user_id = ? AND (LOWER(source_entity) IN ({p_2hop}) OR LOWER(target_entity) IN ({p_2hop}))
+        """
+        rows_2hop = con.execute(query_2hop, params_2hop).fetchall()
+        for r in rows_2hop:
+            rid, src, rel, tgt, conf, fid = r
+            if rid not in seen_rel_ids:
+                seen_rel_ids.add(rid)
+                results.append({
+                    "id": rid,
+                    "source": src,
+                    "relation": rel,
+                    "target": tgt,
+                    "confidence": conf,
+                    "source_fact_id": fid,
+                    "hop": 2,
+                })
+
+    con.close()
+    return results
+
+
 # ── Public API ─────────────────────────────────────────────────────────────────
 
-def upsert_fact(user_id: str, text: str, source: str = "conversation") -> str:
-    """Store or update a long-term user fact. Returns the fact_id."""
+def upsert_fact(
+    user_id: str,
+    text: str,
+    source: str = "conversation",
+    entities: Optional[List[Dict]] = None,
+    relations: Optional[List[Dict]] = None,
+) -> str:
+    """Store or update a long-term user fact and optional graph elements. Returns fact_id."""
     if not CHROMA_AVAILABLE:
         return ""
     fact_id = f"fact_{user_id}_{uuid.uuid4().hex[:12]}"
@@ -119,6 +292,10 @@ def upsert_fact(user_id: str, text: str, source: str = "conversation") -> str:
     )
     con.commit()
     con.close()
+
+    if entities or relations:
+        save_graph_elements(user_id, fact_id, entities, relations)
+
     return fact_id
 
 
@@ -154,14 +331,11 @@ def upsert_document_chunk(
     return chunk_id
 
 
-def retrieve_context_detailed(
+def retrieve_vector_context_detailed(
     user_id: str, query: str, top_k: int = 5, selected_doc_ids: Optional[List[str]] = None
 ) -> tuple:
     """
-    Semantic search across facts + documents for this user.
-    If selected_doc_ids is provided (e.g. ['doc_1', 'doc_2']), only chunks from those documents are included.
-    If selected_doc_ids is empty list [], document search is skipped.
-    Returns (context_text_block: str, scored_chunks: list).
+    Pure vector similarity search across facts + documents for this user.
     """
     if not CHROMA_AVAILABLE or not query.strip():
         return ("", [])
@@ -218,7 +392,6 @@ def retrieve_context_detailed(
                 dists = doc_res.get("distances", [[]])[0] if "distances" in doc_res else [0.25] * len(docs)
 
                 for doc, meta, cid, dist in zip(docs, metas, ids, dists):
-                    # Double check filter in Python if Chroma where condition had limitations
                     if selected_doc_ids is not None and meta.get("doc_id") not in selected_doc_ids:
                         continue
                     src = meta.get("doc_name", "document")
@@ -258,6 +431,16 @@ def retrieve_context_detailed(
     return (context_str, scored_chunks[:top_k + 2])
 
 
+def retrieve_context_detailed(
+    user_id: str, query: str, top_k: int = 5, selected_doc_ids: Optional[List[str]] = None
+) -> tuple:
+    """
+    Hybrid retrieval (ChromaDB Vector + SQLite Knowledge Graph).
+    """
+    from memory.hybrid_retrieval import retrieve_hybrid
+    return retrieve_hybrid(user_id=user_id, query=query, top_k=top_k, selected_doc_ids=selected_doc_ids)
+
+
 def retrieve_context(
     user_id: str, query: str, top_k: int = 5, selected_doc_ids: Optional[List[str]] = None
 ) -> str:
@@ -273,7 +456,20 @@ def list_facts(user_id: str) -> List[Dict]:
         (user_id,)
     ).fetchall()
     con.close()
-    return [{"id": r[0], "content": r[1], "source": r[2], "pinned": bool(r[3]), "created_at": r[4]} for r in rows]
+
+    result = []
+    for r in rows:
+        fid = r[0]
+        rels = get_relations_for_fact(fid)
+        result.append({
+            "id": fid,
+            "content": r[1],
+            "source": r[2],
+            "pinned": bool(r[3]),
+            "created_at": r[4],
+            "relations": rels,
+        })
+    return result
 
 
 def list_documents(user_id: str) -> List[Dict]:
@@ -302,6 +498,7 @@ def delete_fact(fact_id: str) -> bool:
         pass
     con = _conn()
     con.execute("DELETE FROM memory_items WHERE id=?", (fact_id,))
+    con.execute("DELETE FROM kg_relations WHERE source_fact_id=?", (fact_id,))
     con.commit()
     con.close()
     return True

@@ -1,0 +1,13 @@
+id,query,before_rank,after_rank,rank_improved,latency_ms
+1,How do I setup local PostgreSQL database on Windows?,4,1,True,25658.0
+2,What is Abhishek's preferred Python web framework?,4,1,True,26.6
+3,Where is the Chrome DevTools Protocol CDP port configured for Brave?,4,1,True,27.3
+4,How does Kairos handle two-step confirmation for destructive actions?,4,5,False,27.4
+5,What audio sample rate is required by Silero VAD?,4,1,True,26.2
+6,Which embedding model is used for ChromaDB vector memory?,4,1,True,32.2
+7,How does WhatsApp Desktop automation locate contacts on Windows?,4,5,False,34.6
+8,What is the token classification latency target for the orchestrator?,4,1,True,36.1
+9,What model handles the PLAN and REFLECT reasoning loops?,4,1,True,29.7
+10,How are entity relationships stored in the Knowledge Graph layer?,4,2,True,24.6
+11,What happens when orchestrator classification confidence is low?,4,1,True,30.2
+12,How are ingested PDF documents chunked for RAG?,4,5,False,28.6

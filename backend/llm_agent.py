@@ -122,26 +122,30 @@ def get_system_prompt(language: str = "en") -> str:
     )
     # Inject desktop agentic tools instructions
     prompt += "\n\n" + format_system_tools_prompt()
+    # Inject emotion tagging instruction (so every response starts with [EMOTION:label])
+    prompt += "\n\n" + EMOTION_SYSTEM_INSTRUCTION
     return prompt.strip()
 
 # ── Models ────────────────────────────────────────────────────────────────────
-GROQ_MODEL = "llama-3.3-70b-versatile"       # Valid Groq model — fast, 128k context, highly capable
+GROQ_MODEL = "qwen/qwen3.8-27b"              # Valid Groq model on this account — 0.74s latency, 128k context
 NVIDIA_MODEL = "meta/llama-3.1-8b-instruct"  # NVIDIA NIM hosted Llama (fallback only)
+LOOP_MODEL = GROQ_MODEL                      # Fast Groq model used for PLAN, REFLECT, and classification calls
+
 
 def get_active_model_metadata():
     """Returns actual transformer architecture hyperparameters for the active engine."""
     return {
         "model_id": GROQ_MODEL,
-        "name": "Groq Compound (Llama 3.3 70B Engine)",
+        "name": "Qwen 3.8 27B (Groq LPUs)",
         "architecture": "transformer",
-        "vocabSize": 128256,
-        "hiddenSize": 8192,
-        "numLayers": 80,
-        "numAttentionHeads": 64,
+        "vocabSize": 152064,
+        "hiddenSize": 5120,
+        "numLayers": 64,
+        "numAttentionHeads": 40,
         "numKVHeads": 8,
-        "intermediateSize": 28672,
+        "intermediateSize": 27648,
         "tieWordEmbeddings": False,
-        "activation": "swiglu",
+        "activation": "silu",
         "normType": "rmsnorm",
         "contextWindow": 131072,
     }
@@ -167,9 +171,81 @@ _EMOTION_STRIP_RE = _re.compile(
     _re.IGNORECASE
 )
 
+# ── Emotion tag for TTS prosody ───────────────────────────────────────────────
+# LLM is instructed to emit [EMOTION:label] as the very first token.
+# parse_emotion_tag() extracts the label (for TTS+neural) and strips it from
+# the text returned to the user so it never leaks into chat or audio.
+
+_PROSODY_EMOTION_RE = _re.compile(
+    r'^\s*\[EMOTION:([a-z_]+)\]\s*',
+    _re.IGNORECASE
+)
+
+# Valid prosody emotion labels (mirrors tts_emotion_profiles.VALID_EMOTIONS)
+_VALID_PROSODY_EMOTIONS = frozenset({
+    "neutral", "excited", "happy", "enthusiastic", "cheerful",
+    "calm", "relaxed", "reassuring",
+    "urgent", "serious", "focused", "alert",
+    "apologetic", "empathetic", "comforting",
+    "thoughtful", "curious",
+    "surprised", "impressed",
+    "sad", "disappointed",
+    "confident", "assertive",
+})
+
+# Instruction appended to every system prompt so the LLM knows to emit the tag
+EMOTION_SYSTEM_INSTRUCTION = """
+## EMOTIONAL TONE TAGGING (REQUIRED):
+At the very start of EVERY response, output exactly one emotion tag on its own:
+  [EMOTION:label]
+where label is one of: neutral, excited, happy, enthusiastic, cheerful, calm, relaxed,
+reassuring, urgent, serious, focused, alert, apologetic, empathetic, comforting,
+thoughtful, curious, surprised, impressed, sad, disappointed, confident, assertive.
+
+Choose the label that best reflects the emotional tone of your reply.
+- For greetings → cheerful or happy
+- For task completions → confident or happy
+- For errors/failures → apologetic
+- For warnings/urgent info → urgent or alert
+- For calm explanations → thoughtful or calm
+- For default/uncertain → neutral
+
+IMPORTANT: The [EMOTION:label] tag MUST be the very first thing in your response.
+Never explain the tag. Never include it mid-sentence. Never omit it.
+
+Example correct format:
+[EMOTION:excited]
+Great news, Abhishek! The code compiled successfully.
+"""
+
+
+def parse_emotion_tag(raw_text: str) -> tuple[str, str]:
+    """
+    Extracts the [EMOTION:label] tag from the beginning of raw LLM output.
+
+    Returns:
+        (emotion_label: str, cleaned_text: str)
+        emotion_label defaults to "neutral" if tag is missing or invalid.
+    """
+    m = _PROSODY_EMOTION_RE.match(raw_text)
+    if m:
+        label = m.group(1).lower()
+        if label in _VALID_PROSODY_EMOTIONS:
+            cleaned = raw_text[m.end():].strip()
+            return label, cleaned
+        # Tag present but invalid label → neutral + strip tag anyway
+        cleaned = raw_text[m.end():].strip()
+        return "neutral", cleaned
+    # No tag found → neutral, leave text unchanged
+    return "neutral", raw_text.strip()
+
+
 def strip_emotion_tag(text: str) -> str:
     """Remove the leading [EmotionTag] from an LLM response string."""
-    return _EMOTION_STRIP_RE.sub("", text, count=1).strip()
+    # First strip the new prosody emotion tag
+    _, cleaned = parse_emotion_tag(text)
+    # Then strip legacy avatar emotion prefixes
+    return _EMOTION_STRIP_RE.sub("", cleaned, count=1).strip()
 
 
 # Reasoning-block stripper — removes <think>...</think> and **Reasoning**/**Final Answer** wrappers
@@ -259,6 +335,7 @@ def generate_streaming_response(
     user_id: str = "",
     on_rag_callback = None,
     selected_doc_ids: Optional[List[str]] = None,
+    system_prompt_override: Optional[str] = None,
 ):
     """
     Streams LLM response chunks.
@@ -288,7 +365,7 @@ def generate_streaming_response(
             print(f"[RAG] Context retrieval failed: {_rag_err}")
 
     # ── Build system prompt (with optional RAG block injected) ────────────────
-    system_content = get_system_prompt(language)
+    system_content = system_prompt_override if system_prompt_override else get_system_prompt(language)
     if rag_context:
         system_content += f"\n\n{rag_context}"
 

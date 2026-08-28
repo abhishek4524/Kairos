@@ -185,6 +185,9 @@ export function useAudioStreaming({
             }
           }
           else if (ev === 'AI_ERROR') neuralStateMachine.onError(msg.error);
+        } else if (msg.type === 'emotion_update') {
+          // Emotion overlay: modulate neural core visuals to reflect LLM emotional tone
+          neuralStateMachine.onEmotionUpdate(msg.emotion || 'neutral');
         } else if (msg.type === 'transcription') {
           if (callbacksRef.current.onMessageReceived) callbacksRef.current.onMessageReceived(msg);
           if (msg.role === 'user') {

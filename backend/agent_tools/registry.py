@@ -1,13 +1,246 @@
 """
 registry.py — Extensible Agentic Tools & Skills Registry for Kairos.
 
-Defines schemas, execution metadata, and helper parsing for desktop OS & browser automation tools.
+Defines schemas, execution metadata, and helper parsing for generic browser automation
+(Playwright over CDP) and desktop OS automation.
 """
 
 import json
 import re
 
 TOOLS_SCHEMA = [
+    # ── Generic Browser Primitives (Playwright / CDP) ─────────────────────────
+    {
+        "type": "function",
+        "function": {
+            "name": "navigate_to",
+            "description": "Navigate to any URL or search query in Brave browser. If given a query or search terms, uses the search engine.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "url_or_search_query": {
+                        "type": "string",
+                        "description": "The destination URL (e.g. 'https://en.wikipedia.org', 'amazon.com', 'makemytrip.com') or search term (e.g. 'flights from Delhi to Mumbai')"
+                    }
+                },
+                "required": ["url_or_search_query"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "find_and_click",
+            "description": "Find and click any element on the current web page described in plain natural language (e.g. 'search button', 'the second flight result', 'login link', 'add to cart', 'first video').",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "description": {
+                        "type": "string",
+                        "description": "Natural language description, accessible label, button text, link text, or ordinal target (e.g. 'second article', 'submit', 'Book Now')"
+                    }
+                },
+                "required": ["description"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "type_into",
+            "description": "Type text into an input field, search box, or textarea identified by its description or placeholder.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "description": {
+                        "type": "string",
+                        "description": "Description, placeholder, or label of the target input field (e.g. 'search box', 'destination input', 'email', 'password')"
+                    },
+                    "text": {
+                        "type": "string",
+                        "description": "The exact text or query to type into the field"
+                    },
+                    "press_enter": {
+                        "type": "boolean",
+                        "description": "Whether to press Enter after typing (default: false)"
+                    }
+                },
+                "required": ["description", "text"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "scroll_page",
+            "description": "Scroll the active web page up or down.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "direction": {
+                        "type": "string",
+                        "enum": ["down", "up"],
+                        "description": "Scroll direction ('down' or 'up')"
+                    },
+                    "amount": {
+                        "type": "integer",
+                        "description": "Amount to scroll in pixels (default: 500)"
+                    }
+                },
+                "required": ["direction"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "extract_page_text",
+            "description": "Extract and read the text content, page title, URL, and interactive elements of the active web page to summarize or answer questions.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "max_chars": {
+                        "type": "integer",
+                        "description": "Maximum characters to extract (default: 3000)"
+                    }
+                },
+                "required": []
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "go_back",
+            "description": "Navigate back to the previous page in browser history.",
+            "parameters": {
+                "type": "object",
+                "properties": {},
+                "required": []
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "open_new_tab",
+            "description": "Open a new browser tab, optionally navigating directly to a URL.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "url": {
+                        "type": "string",
+                        "description": "Optional destination URL for the new tab"
+                    }
+                },
+                "required": []
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "switch_tab",
+            "description": "Switch active tab by 1-based index or matching title/URL substring.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "index_or_description": {
+                        "description": "Tab index (e.g. 1, 2) or title/URL keyword (e.g. 'github', 'youtube')"
+                    }
+                },
+                "required": ["index_or_description"]
+            }
+        }
+    },
+
+    # ── Backward-Compatibility YouTube Shortcuts ──────────────────────────────
+    {
+        "type": "function",
+        "function": {
+            "name": "open_youtube_in_brave",
+            "description": "Convenience shortcut: Open YouTube home or search in Brave browser.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "query": { "type": "string", "description": "Optional search query" }
+                },
+                "required": []
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "youtube_search",
+            "description": "Convenience shortcut: Search inside YouTube in Brave browser.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "query": { "type": "string", "description": "Search query" }
+                },
+                "required": ["query"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "youtube_play_video",
+            "description": "Convenience shortcut: Play Nth video from YouTube search results.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "index": { "type": "integer", "description": "1-based video index" }
+                },
+                "required": ["index"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "youtube_control",
+            "description": "Convenience shortcut: Control YouTube playback (play_pause, mute, fullscreen, volume_up, volume_down, seek_forward, seek_backward, next_video).",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "action": {
+                        "type": "string",
+                        "enum": ["play_pause", "mute", "fullscreen", "volume_up", "volume_down", "seek_forward", "seek_backward", "next_video", "restart"],
+                        "description": "Playback action"
+                    }
+                },
+                "required": ["action"]
+            }
+        }
+    },
+
+    # ── Desktop OS & Application Management ──────────────────────────────────
+    {
+        "type": "function",
+        "function": {
+            "name": "open_brave",
+            "description": "Standalone launcher: Launch or focus Brave browser on desktop.",
+            "parameters": {
+                "type": "object",
+                "properties": {},
+                "required": []
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "open_vscode",
+            "description": "Standalone launcher: Launch Visual Studio Code on desktop.",
+            "parameters": {
+                "type": "object",
+                "properties": {},
+                "required": []
+            }
+        }
+    },
     {
         "type": "function",
         "function": {
@@ -18,7 +251,7 @@ TOOLS_SCHEMA = [
                 "properties": {
                     "app_name": {
                         "type": "string",
-                        "description": "Name or executable of the application (e.g. 'brave', 'chrome', 'notepad', 'calc', 'code', 'spotify', 'cmd')"
+                        "description": "Name of the application (e.g. 'brave', 'chrome', 'notepad', 'calc', 'code', 'spotify', 'cmd')"
                     }
                 },
                 "required": ["app_name"]
@@ -45,99 +278,8 @@ TOOLS_SCHEMA = [
     {
         "type": "function",
         "function": {
-            "name": "open_youtube_in_brave",
-            "description": "Open YouTube in Brave browser, or navigate directly to YouTube home/search.",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "query": {
-                        "type": "string",
-                        "description": "Optional search term or song to search immediately"
-                    }
-                },
-                "required": []
-            }
-        }
-    },
-    {
-        "type": "function",
-        "function": {
-            "name": "youtube_search",
-            "description": "Search inside YouTube for a query or video title in Brave browser.",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "query": {
-                        "type": "string",
-                        "description": "The search query or video topic to search on YouTube"
-                    }
-                },
-                "required": ["query"]
-            }
-        }
-    },
-    {
-        "type": "function",
-        "function": {
-            "name": "youtube_play_video",
-            "description": "Play the N-th video from the current YouTube search results or homepage (e.g. 1st, 2nd, 3rd, 4th video).",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "index": {
-                        "type": "integer",
-                        "description": "The 1-based index of the video to play (1 for 1st, 2 for 2nd, 3 for 3rd, etc.)"
-                    }
-                },
-                "required": ["index"]
-            }
-        }
-    },
-    {
-        "type": "function",
-        "function": {
-            "name": "scroll_page",
-            "description": "Scroll the active web browser or window up or down.",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "direction": {
-                        "type": "string",
-                        "enum": ["down", "up"],
-                        "description": "Scroll direction ('down' or 'up')"
-                    },
-                    "amount": {
-                        "type": "integer",
-                        "description": "Amount to scroll in pixels/ticks (default: 500)"
-                    }
-                },
-                "required": ["direction"]
-            }
-        }
-    },
-    {
-        "type": "function",
-        "function": {
-            "name": "youtube_control",
-            "description": "Control YouTube video playback: play, pause, mute, unmute, fullscreen, volume up/down, seek forward/back, next video.",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "action": {
-                        "type": "string",
-                        "enum": ["play_pause", "mute", "fullscreen", "volume_up", "volume_down", "seek_forward", "seek_backward", "next_video", "restart"],
-                        "description": "Playback action to perform"
-                    }
-                },
-                "required": ["action"]
-            }
-        }
-    },
-    {
-        "type": "function",
-        "function": {
             "name": "cursor_control",
-            "description": "Autonomous mouse cursor and keyboard actions on desktop (click, double-click, move, type, press key).",
+            "description": "Autonomous mouse cursor and keyboard actions on desktop (click, double_click, move, type_text, press_key).",
             "parameters": {
                 "type": "object",
                 "properties": {
@@ -179,6 +321,21 @@ TOOLS_SCHEMA = [
     {
         "type": "function",
         "function": {
+            "name": "open_notepad_and_write_code",
+            "description": "Write code into a file and immediately open it in Notepad.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "filename": { "type": "string", "description": "Filename (e.g. 'notes.txt', 'script.py')" },
+                    "code": { "type": "string", "description": "Text or code to write" }
+                },
+                "required": ["filename", "code"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
             "name": "write_and_run_sandbox_code",
             "description": "Write code into Kairos's live Monaco code sandbox and execute it in an isolated subprocess.",
             "parameters": {
@@ -210,11 +367,84 @@ TOOLS_SCHEMA = [
         "type": "function",
         "function": {
             "name": "work_mode",
-            "description": "Activate Abhishek's full work setup: opens GitHub profile, LeetCode profile, Gmail, ChatGPT in Brave browser tabs, then opens VS Code.",
+            "description": "Activate Abhishek's full work setup: opens GitHub profile, LeetCode profile, Gmail, ChatGPT in browser tabs, then opens VS Code.",
             "parameters": {
                 "type": "object",
                 "properties": {},
                 "required": []
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "send_whatsapp_desktop_message",
+            "description": "Send a message to a contact using the native WhatsApp Desktop standalone application.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "recipient": {
+                        "type": "string",
+                        "description": "The exact name of the contact as saved in WhatsApp Desktop (e.g. 'Vansh Kumar', 'Mom'). Searching will be done on this text."
+                    },
+                    "message": {
+                        "type": "string",
+                        "description": "The text message body to send."
+                    }
+                },
+                "required": ["recipient", "message"]
+            }
+        }
+    },
+    # ── Live Real-Time Knowledge, News & Utility Tools (Read-Only) ────────────
+    {
+        "type": "function",
+        "function": {
+            "name": "get_current_datetime",
+            "description": "Get current date, day of week, and time in the user's local timezone (or specified timezone).",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "timezone_override": {
+                        "type": "string",
+                        "description": "Optional timezone identifier (e.g. 'Asia/Kolkata', 'America/New_York', 'UTC')."
+                    }
+                },
+                "required": []
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "get_news",
+            "description": "Fetch and summarize live real-time news for a specific topic or location (e.g. 'Muzaffarnagar', 'Uttar Pradesh', 'tech news today', 'world news').",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "topic_or_location": {
+                        "type": "string",
+                        "description": "Topic or Indian city/state/country location (e.g. 'Muzaffarnagar', 'Uttar Pradesh', 'tech', 'business')"
+                    }
+                },
+                "required": []
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "answer_general_question",
+            "description": "Answer live world knowledge, current events, weather, quick facts, or general questions using real-time web search.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "query": {
+                        "type": "string",
+                        "description": "The search query or general question (e.g. 'who won the match yesterday', 'weather in Delhi', 'latest SpaceX launch')"
+                    }
+                },
+                "required": ["query"]
             }
         }
     }
@@ -224,7 +454,8 @@ TOOLS_SCHEMA = [
 SENSITIVE_TOOLS = {
     "check_whatsapp_notifications": "Read WhatsApp messages/notifications",
     "delete_file": "Delete a file from the desktop",
-    "send_email": "Send an email"
+    "send_email": "Send an email",
+    "send_whatsapp_desktop_message": "Send a native WhatsApp Desktop message"
 }
 
 def is_sensitive(tool_name: str) -> bool:
@@ -232,33 +463,166 @@ def is_sensitive(tool_name: str) -> bool:
 
 ACTION_TAG_REGEX = re.compile(r'\[ACTION:(\{.*?\})\]', re.DOTALL)
 
-def format_system_tools_prompt() -> str:
-    """Compact tools prompt — keeps token count low to prevent Groq context overflow."""
-    return """
-## DESKTOP AUTOMATION — AGENTIC TOOLS:
-When the user asks to open apps, search YouTube, scroll, control media, or write code, OUTPUT an [ACTION:{...}] tag FIRST, then a single short English acknowledgment sentence.
+# ── Sub-agent tool ownership map ──────────────────────────────────────────────
+# Maps each tool name → the sub-agent module responsible for it.
+# Used by registry docs, benchmark, and sub-agent tool-subset filtering.
+TOOL_AGENT_MAP: dict = {
+    # browsing_agent
+    "navigate_to":             "browsing_agent",
+    "find_and_click":          "browsing_agent",
+    "type_into":               "browsing_agent",
+    "scroll_page":             "browsing_agent",
+    "extract_page_text":       "browsing_agent",
+    "read_page":               "browsing_agent",
+    "go_back":                 "browsing_agent",
+    "open_new_tab":            "browsing_agent",
+    "switch_tab":              "browsing_agent",
+    "open_youtube_in_brave":   "browsing_agent",
+    "youtube_search":          "browsing_agent",
+    "youtube_play_video":      "browsing_agent",
+    "youtube_control":         "browsing_agent",
+    "open_brave":              "browsing_agent",
+    "work_mode":               "browsing_agent",
+    # coding_agent
+    "open_vscode":                 "coding_agent",
+    "open_notepad_and_write_code": "coding_agent",
+    "open_vscode_and_write_code":  "coding_agent",
+    "write_and_run_sandbox_code":  "coding_agent",
+    # system_agent
+    "open_app":                       "system_agent",
+    "close_app":                      "system_agent",
+    "cursor_control":                 "system_agent",
+    "type_in_active_window":          "system_agent",
+    "delete_file":                    "system_agent",
+    "send_email":                     "system_agent",
+    "send_whatsapp_message":          "system_agent",
+    "send_whatsapp_desktop_message":  "system_agent",
+    "check_whatsapp_notifications":   "system_agent",
+    # info_agent (Live Knowledge & Utilities)
+    "get_current_datetime":    "info_agent",
+    "get_news":                "info_agent",
+    "answer_general_question": "info_agent",
+    # memory_agent — no action tools, uses memory_store directly
+    # general_agent — no tools
+}
 
-FORMAT: [ACTION:{"tool":"<name>","params":{...},"summary":"..."}]
 
-TOOL REFERENCE:
-- open_app → {"app_name":"brave"} — open/focus any app (brave, chrome, code, spotify, calc, notepad, etc.)
-- open_youtube_in_brave → {} — open YouTube in Brave browser
-- youtube_search → {"query":"..."} — search on YouTube (use when user says "search X" or "X search karo")
-- youtube_play_video → {"index":1} — play 1st/2nd/3rd video from results (1-based index)
-- scroll_page → {"direction":"down","amount":500} — scroll browser up or down
-- youtube_control → {"action":"play_pause"} — playback: play_pause, mute, fullscreen, volume_up, volume_down, seek_forward, seek_backward, next_video
-- cursor_control → {"action":"click","x":500,"y":400} — mouse/keyboard: click, double_click, right_click, move, type_text, press_key
-- open_notepad_and_write_code → {"filename":"script.py","code":"..."} — write code and open in Notepad (use when user says "write code in notepad" or "notepad me code likho")
-- open_vscode_and_write_code → {"filename":"main.py","code":"..."} — write code and open in VS Code (use when user says "write code in vs code" or "vs code me code likho")
-- write_and_run_sandbox_code → {"language":"python","code":"...","auto_run":true} — run in live Monaco sandbox
-- work_mode → {} — open GitHub, LeetCode, Gmail, ChatGPT in Chrome + VS Code + Brave
+def get_tool_schemas_for_agent(tool_names: list) -> list:
+    """Return the TOOLS_SCHEMA entries whose function.name is in tool_names."""
+    name_set = set(tool_names)
+    return [t for t in TOOLS_SCHEMA if t["function"]["name"] in name_set]
 
-EXAMPLES:
-User: "open brave" → [ACTION:{"tool":"open_app","params":{"app_name":"brave"},"summary":"Open Brave"}] Opening Brave for you, sir!
-User: "open youtube" → [ACTION:{"tool":"open_youtube_in_brave","params":{},"summary":"Open YouTube"}] Opening YouTube in Brave!
-User: "search Networking" → [ACTION:{"tool":"youtube_search","params":{"query":"Networking"},"summary":"Search Networking on YouTube"}] Searching YouTube for Networking!
-User: "play 1st video" → [ACTION:{"tool":"youtube_play_video","params":{"index":1},"summary":"Play 1st video"}] Playing the 1st video!
-User: "scroll down" → [ACTION:{"tool":"scroll_page","params":{"direction":"down","amount":500},"summary":"Scroll down"}] Scrolling down!
-User: "write normal python code in notepad" → [ACTION:{"tool":"open_notepad_and_write_code","params":{"filename":"hello.py","code":"print('Hello, Abhishek!')"},"summary":"Write Python in Notepad"}] Opening Notepad with your Python code!
-User: "write a react component in vs code" → [ACTION:{"tool":"open_vscode_and_write_code","params":{"filename":"Counter.jsx","code":"import React from 'react';\\nexport default function Counter() { return <div>Count</div>; }"},"summary":"Write in VS Code"}] Opening VS Code with your React code!
-"""
+
+def format_system_tools_prompt(tool_names: list = None) -> str:
+    """
+    Compact tools prompt injected into the LLM system message.
+
+    Args:
+        tool_names: Optional list of tool names to include. When provided, only
+                    those tools appear in the prompt (sub-agent focused mode).
+                    When None, all tools are included (legacy single-agent mode).
+    """
+    # Determine which tools are in scope
+    active = set(tool_names) if tool_names else None
+
+    def _include(name: str) -> bool:
+        return active is None or name in active
+
+    lines = [
+        "## DESKTOP & WEB AUTOMATION TOOLS:",
+        "When the user asks to browse websites, search the web, interact with page elements, open apps, control media, or write code, OUTPUT an `[ACTION:{...}]` tag FIRST, followed by a brief, natural English acknowledgment sentence.",
+        "",
+        "FORMAT: [ACTION:{\"tool\":\"<name>\",\"params\":{...},\"summary\":\"...\"}]",
+    ]
+
+    # Browser primitives
+    browser_tools = [
+        ("navigate_to",     "`navigate_to` → `{\"url_or_search_query\":\"https://example.com\"}`"),
+        ("find_and_click",  "`find_and_click` → `{\"description\":\"Book Now\"}`"),
+        ("type_into",       "`type_into` → `{\"description\":\"Search destination\",\"text\":\"Mumbai\",\"press_enter\":true}`"),
+        ("scroll_page",     "`scroll_page` → `{\"direction\":\"down\",\"amount\":500}`"),
+        ("extract_page_text", "`extract_page_text` → `{}` — read page content & interactive elements"),
+        ("go_back",         "`go_back` → `{}` — browser back button"),
+        ("open_new_tab",    "`open_new_tab` → `{\"url\":\"https://...\"}`"),
+        ("switch_tab",      "`switch_tab` → `{\"index_or_description\":\"github\"}`"),
+    ]
+    browser_entries = [desc for name, desc in browser_tools if _include(name)]
+    if browser_entries:
+        lines += ["", "GENERIC BROWSER PRIMITIVES (WORKS ON ANY WEBSITE VIA CDP):"] + browser_entries
+
+    # YouTube shortcuts
+    yt_tools = [
+        ("open_youtube_in_brave", "`open_youtube_in_brave` → `{\"query\":\"lofi\"}` — open YouTube"),
+        ("youtube_search",        "`youtube_search` → `{\"query\":\"lofi music\"}` — search on YouTube"),
+        ("youtube_play_video",    "`youtube_play_video` → `{\"index\":2}` — play Nth result"),
+        ("youtube_control",       "`youtube_control` → `{\"action\":\"play_pause\"}` — playback control"),
+    ]
+    yt_entries = [desc for name, desc in yt_tools if _include(name)]
+    if yt_entries:
+        lines += ["", "YOUTUBE SHORTCUTS:"] + yt_entries
+
+    # Desktop / OS tools
+    os_tools = [
+        ("open_app",     "`open_app` → `{\"app_name\":\"brave\"}`"),
+        ("open_brave",   "`open_brave` → `{}` — launch/focus Brave browser"),
+        ("open_vscode",  "`open_vscode` → `{}` — launch Visual Studio Code"),
+        ("close_app",    "`close_app` → `{\"app_name\":\"calc\"}`"),
+        ("cursor_control", "`cursor_control` → `{\"action\":\"click\",\"x\":500,\"y\":400}`"),
+        ("type_in_active_window", "`type_in_active_window` → `{\"text\":\"hello\"}`"),
+        ("work_mode",    "`work_mode` → `{}` — open GitHub, LeetCode, Gmail, ChatGPT in Chrome & VS Code"),
+    ]
+    os_entries = [desc for name, desc in os_tools if _include(name)]
+    if os_entries:
+        lines += ["", "DESKTOP APPS & OS TOOLS:"] + os_entries
+
+    # Info / live knowledge tools
+    info_tools = [
+        ("get_current_datetime", "`get_current_datetime` → `{}` — get current date, day, and time in local timezone"),
+        ("get_news",             "`get_news` → `{\"topic_or_location\":\"Muzaffarnagar\"}` — live city/topic news"),
+        ("answer_general_question", "`answer_general_question` → `{\"query\":\"who won the cricket match yesterday\"}` — live web search"),
+    ]
+    info_entries = [desc for name, desc in info_tools if _include(name)]
+    if info_entries:
+        lines += ["", "LIVE KNOWLEDGE, NEWS & UTILITIES (READ-ONLY):"] + info_entries
+
+    # Coding tools
+    code_tools = [
+        ("open_notepad_and_write_code", "`open_notepad_and_write_code` → `{\"filename\":\"script.py\",\"code\":\"...\"}`"),
+        ("open_vscode_and_write_code",  "`open_vscode_and_write_code` → `{\"filename\":\"main.py\",\"code\":\"...\"}`"),
+        ("write_and_run_sandbox_code",  "`write_and_run_sandbox_code` → `{\"language\":\"python\",\"code\":\"...\",\"auto_run\":true}`"),
+    ]
+    code_entries = [desc for name, desc in code_tools if _include(name)]
+    if code_entries:
+        lines += ["", "CODE TOOLS:"] + code_entries
+
+    # Communication / destructive tools
+    comm_tools = [
+        ("send_whatsapp_desktop_message", "`send_whatsapp_desktop_message` → `{\"recipient\":\"Vansh Kumar\",\"message\":\"hi\"}`"),
+        ("send_whatsapp_message",         "`send_whatsapp_message` → `{\"recipient\":\"Vansh\",\"message\":\"hi\"}` — WhatsApp Web fallback"),
+        ("check_whatsapp_notifications",  "`check_whatsapp_notifications` → `{}` — open WhatsApp Web"),
+        ("delete_file",                   "`delete_file` → `{\"filename\":\"report.pdf\"}` — moves to trash with confirmation"),
+        ("send_email",                    "`send_email` → `{\"recipient\":\"x@y.com\",\"subject\":\"Hi\",\"body\":\"...\"}` — opens mailto draft"),
+    ]
+    comm_entries = [desc for name, desc in comm_tools if _include(name)]
+    if comm_entries:
+        lines += ["", "COMMUNICATION & DESTRUCTIVE TOOLS (require confirmation):"] + comm_entries
+
+    # Disambiguation rules (only if WhatsApp desktop is in scope)
+    if _include("send_whatsapp_desktop_message"):
+        lines += [
+            "",
+            "CONTACT DISAMBIGUATION RULES:",
+            "- If `send_whatsapp_desktop_message` returns AMBIGUOUS_RECIPIENT, ask the user to clarify. Do NOT guess.",
+        ]
+
+    # Multi-step examples (only relevant when browser tools included)
+    if _include("navigate_to"):
+        lines += [
+            "",
+            "MULTI-STEP WEB TASK EXAMPLES:",
+            "- User: \"Find me flights from Delhi to Mumbai on MakeMyTrip\"",
+            "  Step 1: [ACTION:{\"tool\":\"navigate_to\",\"params\":{\"url_or_search_query\":\"https://www.makemytrip.com/flights/\"},\"summary\":\"Navigate to MakeMyTrip\"}] Navigating now.",
+        ]
+
+    return "\n".join(lines) + "\n"
+

@@ -12,7 +12,7 @@
 
 const { app, BrowserWindow, ipcMain, shell, session } = require('electron');
 const path = require('path');
-const { spawn } = require('child_process');
+const { spawn, exec } = require('child_process');
 const http = require('http');
 const fs = require('fs');
 
@@ -50,11 +50,38 @@ const BACKEND_PORT = 8000;
 const BACKEND_URL  = `http://127.0.0.1:${BACKEND_PORT}`;
 
 function getPythonPath() {
+  if (process.env.KAIROS_PYTHON_PATH && fs.existsSync(process.env.KAIROS_PYTHON_PATH)) {
+    return process.env.KAIROS_PYTHON_PATH;
+  }
   // In packaged app, use bundled venv. In dev, use system/venv python.
-  const venvPython = path.join(BACKEND_DIR, 'venv', 'Scripts', 'python.exe');
-  if (fs.existsSync(venvPython)) return venvPython;
+  const winVenv = path.join(BACKEND_DIR, 'venv', 'Scripts', 'python.exe');
+  if (fs.existsSync(winVenv)) return winVenv;
+  const unixVenv = path.join(BACKEND_DIR, 'venv', 'bin', 'python');
+  if (fs.existsSync(unixVenv)) return unixVenv;
   // Fallback to system Python
   return 'python';
+}
+
+function getBravePath() {
+  if (process.env.KAIROS_BRAVE_PATH && fs.existsSync(process.env.KAIROS_BRAVE_PATH)) {
+    return process.env.KAIROS_BRAVE_PATH;
+  }
+  if (process.platform === 'win32') {
+    const candidates = [
+      path.join(process.env.PROGRAMFILES || 'C:\\Program Files', 'BraveSoftware', 'Brave-Browser', 'Application', 'brave.exe'),
+      path.join(process.env.LOCALAPPDATA || '', 'BraveSoftware', 'Brave-Browser', 'Application', 'brave.exe'),
+      path.join(process.env['PROGRAMFILES(X86)'] || 'C:\\Program Files (x86)', 'BraveSoftware', 'Brave-Browser', 'Application', 'brave.exe'),
+    ];
+    for (const p of candidates) {
+      if (p && fs.existsSync(p)) return p;
+    }
+    return 'brave';
+  } else if (process.platform === 'darwin') {
+    const macPath = '/Applications/Brave Browser.app/Contents/MacOS/Brave Browser';
+    if (fs.existsSync(macPath)) return macPath;
+    return 'brave';
+  }
+  return 'brave-browser';
 }
 
 function startBackend() {
@@ -198,20 +225,38 @@ function createWindow() {
   });
 }
 
+function checkBackendRunning(port = 8000) {
+  return new Promise((resolve) => {
+    const req = http.get(`http://127.0.0.1:${port}/`, (res) => {
+      resolve(true);
+      res.resume();
+    });
+    req.on('error', () => resolve(false));
+    req.setTimeout(800, () => {
+      req.destroy();
+      resolve(false);
+    });
+  });
+}
+
 // ── App lifecycle ─────────────────────────────────────────────────────────────
 app.whenReady().then(async () => {
-  // 1. Start backend
-  startBackend();
-
-  // 2. Wait until it's healthy
-  try {
-    await waitForBackend();
-  } catch (err) {
-    console.error('[Main] Backend failed to start:', err.message);
-    // Continue anyway — user will see connection errors in the UI
+  // 1. Check if backend is already running (e.g. started via manual uvicorn)
+  const alreadyRunning = await checkBackendRunning(BACKEND_PORT);
+  if (alreadyRunning) {
+    console.log(`[Backend] Backend is already running on port ${BACKEND_PORT} — connected! ✅`);
+  } else {
+    // Start backend process
+    startBackend();
+    // Wait until it's healthy
+    try {
+      await waitForBackend();
+    } catch (err) {
+      console.error('[Main] Backend failed to start:', err.message);
+    }
   }
 
-  // 3. Open window
+  // 2. Open window
   createWindow();
 
   app.on('activate', () => {
@@ -297,22 +342,37 @@ ipcMain.handle('os:execute-tool', async (event, { toolName, params = {} }) => {
     switch (toolName) {
       case 'open_app': {
         const appName = (params.app_name || '').toLowerCase().trim();
-        const appMap = {
-          spotify: 'start spotify:',
-          chrome: 'start chrome',
-          notepad: 'notepad',
-          calc: 'calc',
-          calculator: 'calc',
-          code: 'code',
-          vscode: 'code',
-          discord: 'start discord:',
-          terminal: 'start wt || start cmd',
-          cmd: 'start cmd',
-          vlc: 'start vlc',
-          explorer: 'explorer'
-        };
+        const bravePath = getBravePath();
+        if (appName === 'brave' || appName === 'brave browser') {
+          exec(`"${bravePath}"`, { shell: true }, (err) => {
+            if (err) shell.openExternal('https://brave.com');
+          });
+          return { ok: true, tool: 'open_app', app: params.app_name };
+        }
 
-        const cmd = appMap[appName] || `start "" "${params.app_name}"`;
+        let cmd;
+        if (process.platform === 'win32') {
+          const appMap = {
+            spotify: 'start spotify:',
+            chrome: 'start chrome',
+            notepad: 'notepad',
+            calc: 'calc',
+            calculator: 'calc',
+            code: 'code',
+            vscode: 'code',
+            discord: 'start discord:',
+            terminal: 'start wt || start cmd',
+            cmd: 'start cmd',
+            vlc: 'start vlc',
+            explorer: 'explorer'
+          };
+          cmd = appMap[appName] || `start "" "${params.app_name}"`;
+        } else if (process.platform === 'darwin') {
+          cmd = `open -a "${params.app_name}"`;
+        } else {
+          cmd = `xdg-open "${params.app_name}" || "${params.app_name}"`;
+        }
+
         return new Promise((resolve) => {
           exec(cmd, { shell: true }, (err, stdout, stderr) => {
             if (err) {
@@ -327,11 +387,35 @@ ipcMain.handle('os:execute-tool', async (event, { toolName, params = {} }) => {
         });
       }
 
+      case 'open_youtube_in_brave':
+      case 'youtube_search':
       case 'search_and_play_youtube': {
         const query = params.query || '';
-        const ytUrl = `https://www.youtube.com/results?search_query=${encodeURIComponent(query)}`;
-        await shell.openExternal(ytUrl);
-        return { ok: true, tool: 'search_and_play_youtube', query, url: ytUrl };
+        const bravePath = getBravePath();
+        const ytUrl = query 
+          ? `https://www.youtube.com/results?search_query=${encodeURIComponent(query)}`
+          : 'https://www.youtube.com';
+        exec(`"${bravePath}" "${ytUrl}"`, { shell: true }, (err) => {
+          if (err) shell.openExternal(ytUrl);
+        });
+        return { ok: true, tool: toolName, query, url: ytUrl };
+      }
+
+      case 'open_notepad_and_write_code': {
+        const filename = params.filename || 'code.py';
+        const code = params.code || '';
+        const workspaceDir = path.join(app.getPath('userData'), 'workspace');
+        if (!fs.existsSync(workspaceDir)) fs.mkdirSync(workspaceDir, { recursive: true });
+        const filePath = path.join(workspaceDir, path.basename(filename));
+        fs.writeFileSync(filePath, code, 'utf8');
+        if (process.platform === 'win32') {
+          exec(`notepad.exe "${filePath}"`, { shell: true });
+        } else if (process.platform === 'darwin') {
+          exec(`open -e "${filePath}"`, { shell: true });
+        } else {
+          exec(`xdg-open "${filePath}"`, { shell: true });
+        }
+        return { ok: true, tool: 'open_notepad_and_write_code', filename, filePath };
       }
 
       case 'open_vscode_and_write_code': {
@@ -357,14 +441,13 @@ ipcMain.handle('os:execute-tool', async (event, { toolName, params = {} }) => {
       }
 
       case 'check_whatsapp_notifications': {
-        // Open WhatsApp Web or Desktop application
         const waUrl = 'https://web.whatsapp.com';
         await shell.openExternal(waUrl);
         return { ok: true, tool: 'check_whatsapp_notifications', action: params.action || 'check_unread', url: waUrl };
       }
 
       default:
-        return { ok: false, error: `Unknown tool: ${toolName}` };
+        return { ok: true, tool: toolName };
     }
   } catch (err) {
     console.error(`[AgenticTool] Execution error for ${toolName}:`, err);

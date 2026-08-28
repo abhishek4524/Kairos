@@ -147,6 +147,38 @@ export const STATE_VISUAL_PROFILES = {
   },
 };
 
+// ─── Emotion Visual Overlay Profiles ────────────────────────────────────────
+// Each emotion subtly modulates the active STATE_VISUAL_PROFILE.
+// Fields here are *deltas* applied ON TOP of the current functional state profile,
+// allowing emotion to influence but never completely override the state color.
+// Togglable via neuralStateMachine.emotionOverlayEnabled = false.
+const EMOTION_VISUAL_OVERLAYS = {
+  // Deltas: glowBoost (+/-), pulseBoost (+/-), colorTint (string|null), activityBoost (+/-)
+  neutral:      { glowBoost: 0.0,   pulseBoost: 0.0,  colorTint: null,        activityBoost: 0.0  },
+  excited:      { glowBoost: 0.22,  pulseBoost: 1.2,  colorTint: '#fbbf24',   activityBoost: 0.18 }, // warm gold burst
+  happy:        { glowBoost: 0.15,  pulseBoost: 0.6,  colorTint: '#34d399',   activityBoost: 0.10 }, // soft emerald
+  enthusiastic: { glowBoost: 0.18,  pulseBoost: 0.9,  colorTint: '#f59e0b',   activityBoost: 0.14 },
+  cheerful:     { glowBoost: 0.12,  pulseBoost: 0.5,  colorTint: '#6ee7b7',   activityBoost: 0.08 },
+  calm:         { glowBoost: -0.08, pulseBoost: -0.5, colorTint: '#93c5fd',   activityBoost: -0.1 }, // cool blue haze
+  relaxed:      { glowBoost: -0.06, pulseBoost: -0.3, colorTint: '#a5f3fc',   activityBoost: -0.08 },
+  reassuring:   { glowBoost: -0.05, pulseBoost: -0.4, colorTint: '#bfdbfe',   activityBoost: -0.07 },
+  urgent:       { glowBoost: 0.30,  pulseBoost: 1.8,  colorTint: '#ef4444',   activityBoost: 0.22 }, // red pulse surge
+  serious:      { glowBoost: 0.05,  pulseBoost: -0.2, colorTint: '#9ca3af',   activityBoost: 0.04 },
+  focused:      { glowBoost: 0.08,  pulseBoost: 0.1,  colorTint: '#60a5fa',   activityBoost: 0.06 },
+  alert:        { glowBoost: 0.25,  pulseBoost: 1.4,  colorTint: '#f97316',   activityBoost: 0.18 },
+  apologetic:   { glowBoost: -0.15, pulseBoost: -0.8, colorTint: '#c4b5fd',   activityBoost: -0.12 }, // soft violet dim
+  empathetic:   { glowBoost: -0.10, pulseBoost: -0.5, colorTint: '#ddd6fe',   activityBoost: -0.08 },
+  comforting:   { glowBoost: -0.12, pulseBoost: -0.6, colorTint: '#e9d5ff',   activityBoost: -0.10 },
+  thoughtful:   { glowBoost: -0.04, pulseBoost: -0.2, colorTint: '#a78bfa',   activityBoost: -0.04 },
+  curious:      { glowBoost: 0.10,  pulseBoost: 0.4,  colorTint: '#7dd3fc',   activityBoost: 0.08 },
+  surprised:    { glowBoost: 0.28,  pulseBoost: 1.5,  colorTint: '#fde68a',   activityBoost: 0.15 }, // bright amber flash
+  impressed:    { glowBoost: 0.14,  pulseBoost: 0.7,  colorTint: '#fcd34d',   activityBoost: 0.10 },
+  sad:          { glowBoost: -0.20, pulseBoost: -1.0, colorTint: '#6b7280',   activityBoost: -0.18 }, // grey dimming
+  disappointed: { glowBoost: -0.14, pulseBoost: -0.7, colorTint: '#9ca3af',   activityBoost: -0.12 },
+  confident:    { glowBoost: 0.12,  pulseBoost: 0.4,  colorTint: '#38bdf8',   activityBoost: 0.08 },
+  assertive:    { glowBoost: 0.10,  pulseBoost: 0.3,  colorTint: '#0ea5e9',   activityBoost: 0.06 },
+};
+
 class NeuralStateMachine {
   constructor() {
     this.currentState = AI_STATES.IDLE;
@@ -155,6 +187,13 @@ class NeuralStateMachine {
     this.listeners = new Set();
     this.autoResetTimer = null;
     this.history = [];
+
+    // ── Emotion overlay ───────────────────────────────────────────────────
+    // Set emotionOverlayEnabled = false to revert to flat functional-state-only visuals.
+    this.currentEmotion = 'neutral';
+    this.emotionOverlayEnabled = true;   // togglable via settings
+    this.emotionResetTimer = null;       // auto-clear emotion after response finishes
+
     this.metrics = {
       tokensGenerated: 0,
       ragRetrievalsCount: 0,
@@ -169,8 +208,29 @@ class NeuralStateMachine {
     return this.currentState;
   }
 
+  /**
+   * Returns the visual profile for the current state, optionally blended with
+   * the emotion overlay if emotionOverlayEnabled is true.
+   * Overlay deltas are clamped to keep values in safe ranges.
+   */
   getProfile() {
-    return STATE_VISUAL_PROFILES[this.currentState] || STATE_VISUAL_PROFILES.IDLE;
+    const base = { ...(STATE_VISUAL_PROFILES[this.currentState] || STATE_VISUAL_PROFILES.IDLE) };
+    if (!this.emotionOverlayEnabled || this.currentEmotion === 'neutral') {
+      return base;
+    }
+    const overlay = EMOTION_VISUAL_OVERLAYS[this.currentEmotion] || EMOTION_VISUAL_OVERLAYS.neutral;
+
+    // Apply deltas — clamp to reasonable bounds
+    const blended = {
+      ...base,
+      coreGlow:      Math.max(0.1, Math.min(1.0, base.coreGlow      + overlay.glowBoost)),
+      pulseSpeed:    Math.max(0.5, Math.min(6.0, base.pulseSpeed    + overlay.pulseBoost)),
+      activityLevel: Math.max(0.1, Math.min(1.0, base.activityLevel + overlay.activityBoost)),
+      // Inject emotion tint as emotionColor so renderers can optionally use it
+      emotionColor:  overlay.colorTint || base.primaryColor,
+      emotionLabel:  this.currentEmotion,
+    };
+    return blended;
   }
 
   getStateData() {
@@ -197,6 +257,32 @@ class NeuralStateMachine {
         console.error('[NeuralStateMachine] Listener error:', err);
       }
     }
+  }
+
+  /**
+   * Called when the backend emits an emotion_update WebSocket event.
+   * Updates currentEmotion and re-notifies all subscribers.
+   * Auto-resets to 'neutral' after 8 seconds (the typical response duration).
+   *
+   * @param {string} emotion - Emotion label from tts_emotion_profiles.EMOTION_PROFILES
+   */
+  onEmotionUpdate(emotion = 'neutral') {
+    const validEmotions = new Set(Object.keys(EMOTION_VISUAL_OVERLAYS));
+    const resolved = validEmotions.has(emotion) ? emotion : 'neutral';
+
+    if (this.emotionResetTimer) {
+      clearTimeout(this.emotionResetTimer);
+      this.emotionResetTimer = null;
+    }
+
+    this.currentEmotion = resolved;
+    this._notify();
+
+    // Auto-reset after 8 seconds so a stale emotion doesn't persist into next IDLE state
+    this.emotionResetTimer = setTimeout(() => {
+      this.currentEmotion = 'neutral';
+      this._notify();
+    }, 8000);
   }
 
   transition(newState, payload = {}) {

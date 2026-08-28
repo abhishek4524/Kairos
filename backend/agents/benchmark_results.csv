@@ -1,0 +1,11 @@
+id,prompt,expected_category,detected_category,confidence,agent_used,before_sys_tokens,after_sys_tokens,sys_tokens_saved,class_latency_ms,gen_latency_ms,before_total_latency_ms,after_total_latency_ms
+1,write a Python quicksort algorithm in VS Code,coding,coding,0.99,coding_agent,1290,980,310,4951.1,8169.7,6020.0,13120.8
+2,create a sandbox Python function to calculate fibonacci numbers,coding,coding,0.98,coding_agent,1290,980,310,2570.3,9261.7,22856.0,11832.0
+3,open YouTube and search for lofi music,browsing,browsing,0.98,browsing_agent,1290,1153,137,532.3,10435.5,14423.8,10967.8
+4,find flights from Delhi to Mumbai on MakeMyTrip,browsing,browsing,0.95,browsing_agent,1290,1153,137,600.3,10979.1,21500.4,11579.4
+5,close calculator and open notepad,system_control,system_control,0.99,system_agent,1290,1086,204,1649.7,5208.9,26352.0,6858.7
+6,send a native WhatsApp Desktop message to Vansh saying hello,system_control,system_control,0.98,system_agent,1290,1086,204,6253.9,19694.2,13620.0,25948.1
+7,what did I tell you about my preferred programming language?,research_memory,research_memory,0.98,memory_agent,1290,763,527,1360.4,4354.1,20981.3,5714.5
+8,summarize my saved project notes about database architecture,research_memory,research_memory,0.95,memory_agent,1290,763,527,3809.9,6638.9,23441.3,10448.8
+9,"hello Kairos, how are you feeling today?",chitchat_general,chitchat_general,0.99,general_agent,1290,749,541,5558.0,9806.0,13319.4,15364.0
+10,what is the approximate distance from Earth to the Moon?,chitchat_general,chitchat_general,0.95,general_agent,1290,749,541,3973.7,8889.9,26949.6,12863.6

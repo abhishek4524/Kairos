@@ -1,0 +1,7 @@
+# Kairos User Protected Paths
+# Any file or directory listed here is permanently protected from write, modification, or deletion by Kairos.
+# Add one path per line. Relative paths are resolved against the user's home directory.
+# Example:
+# ~/Documents/PersonalVault
+# ~/TaxDocuments
+# /secure/keys

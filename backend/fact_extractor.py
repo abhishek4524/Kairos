@@ -26,26 +26,37 @@ def _get_groq_client():
     return _groq_async_client
 
 _EXTRACT_PROMPT = """\
-You are a personal memory assistant. Given a single conversation turn, extract 0-5 SHORT salient facts about the USER (not the assistant).
+You are a personal memory and knowledge graph assistant. Given a single conversation turn, extract:
+1. 0-5 SHORT salient facts about the USER (not the assistant).
+2. Named entities mentioned (people, projects, tools, places, concepts).
+3. Relationships between entities (e.g. "Abhishek -- works_on --> Kairos", "Kairos -- uses --> ChromaDB").
 
 Focus on:
-- Name, age, location, occupation, relationships
-- Preferences (likes/dislikes, hobbies, food, music, topics)
-- Goals, important events, recurring topics they mention
-- Problems they are solving
+- User identity, preferences, relationships, occupation, location
+- Projects, tools, technologies, goals, and problems they mention
+
+Return ONLY a valid JSON object matching this exact schema:
+{{
+  "facts": ["Abhishek is building Kairos AI assistant"],
+  "entities": [
+    {{"name": "Abhishek", "type": "person"}},
+    {{"name": "Kairos", "type": "project"}}
+  ],
+  "relations": [
+    {{"source": "Abhishek", "relation": "building", "target": "Kairos", "confidence": 0.95}}
+  ]
+}}
 
 Rules:
-- Return ONLY a valid JSON array of strings. Example: ["User likes hiking", "User is a software engineer"]
-- Return [] if no user-specific facts are found in this turn.
-- DO NOT include facts about the assistant.
-- Each fact must be a complete, standalone sentence.
+- If no salient facts are found, return {{"facts": [], "entities": [], "relations": []}}.
+- Do NOT extract facts or entities about the assistant.
 - Maximum 5 facts per turn.
 
 Conversation turn:
 User: {user_message}
 Assistant: {assistant_response}
 
-Return ONLY the JSON array:"""
+Return ONLY the JSON object:"""
 
 
 async def extract_and_store(
@@ -55,7 +66,7 @@ async def extract_and_store(
     session_date: str = "",
 ):
     """
-    Extract salient user facts from one conversation turn and store them.
+    Extract salient user facts, entities, and relations from one conversation turn and store them.
     Designed to run as asyncio.create_task() — all failures are silently caught.
     """
     if not memory_store.CHROMA_AVAILABLE:
@@ -72,9 +83,9 @@ async def extract_and_store(
         )
 
         response = await client.chat.completions.create(
-            model="llama-3.1-8b-instant",   # small + fast for extraction; preserve 70B quota
+            model="qwen/qwen3.8-27b",   # Fast model on this key for extraction
             messages=[{"role": "user", "content": prompt}],
-            max_tokens=200,
+            max_tokens=350,
             temperature=0.2,
         )
 
@@ -87,20 +98,36 @@ async def extract_and_store(
                 raw = raw[4:]
         raw = raw.strip()
 
-        facts: list = json.loads(raw)
-        if not isinstance(facts, list):
+        parsed = json.loads(raw)
+        if isinstance(parsed, list):
+            # Backward compatibility fallback if model returns array of strings
+            facts = parsed
+            entities = []
+            relations = []
+        elif isinstance(parsed, dict):
+            facts = parsed.get("facts", [])
+            entities = parsed.get("entities", [])
+            relations = parsed.get("relations", [])
+        else:
             return
 
         source = session_date or "conversation"
         stored = 0
         for fact in facts[:5]:
             if isinstance(fact, str) and fact.strip():
-                memory_store.upsert_fact(user_id, fact.strip(), source=source)
+                memory_store.upsert_fact(
+                    user_id=user_id,
+                    text=fact.strip(),
+                    source=source,
+                    entities=entities,
+                    relations=relations,
+                )
                 stored += 1
 
         if stored > 0:
-            print(f"[Memory] Extracted {stored} fact(s) for user {user_id[:8]}...")
+            print(f"[Memory] Extracted {stored} fact(s), {len(entities)} entity(ies), {len(relations)} relation(s) for user {user_id[:8]}...")
 
     except Exception as e:
         # Silent — never crash the main response loop
         print(f"[Memory] Fact extraction skipped: {e}")
+

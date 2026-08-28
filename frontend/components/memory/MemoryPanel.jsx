@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   X, Brain, FileText, Pin, PinOff, Trash2, Upload, RefreshCw,
-  Clock, AlertCircle, CheckCircle, BookOpen, Sparkles, Database, Check
+  Clock, AlertCircle, CheckCircle, BookOpen, Sparkles, Database, Check, Share2
 } from 'lucide-react';
 import { neuralStateMachine } from '../../neural/neuralStateMachine';
 
@@ -52,6 +52,25 @@ function FactCard({ fact, onDelete, onTogglePin }) {
           </button>
         </div>
       </div>
+
+      {fact.relations && fact.relations.length > 0 && (
+        <div className="mt-2.5 pt-2 border-t border-slate-800/60 flex flex-wrap gap-1.5 items-center">
+          <span className="text-[10px] font-mono text-purple-400/90 font-semibold flex items-center gap-1 mr-1">
+            <Share2 size={10} /> Relations:
+          </span>
+          {fact.relations.map((rel, idx) => (
+            <span
+              key={rel.id || idx}
+              className="px-2 py-0.5 rounded-full bg-purple-950/40 text-purple-300 border border-purple-500/30 text-[10px] font-mono flex items-center gap-1 shadow-sm"
+            >
+              <span className="font-semibold text-slate-200">{rel.source}</span>
+              <span className="text-purple-400 font-medium">→ {rel.relation} →</span>
+              <span className="font-semibold text-slate-200">{rel.target}</span>
+            </span>
+          ))}
+        </div>
+      )}
+
       <div className="mt-2 flex items-center gap-3 text-[10px] font-mono text-slate-500">
         <span className="flex items-center gap-1"><Clock size={10} /> {formatDate(fact.created_at)}</span>
         <span className="flex items-center gap-1">
