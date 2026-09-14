@@ -11,8 +11,22 @@ try:
 except AttributeError:
     pass  # Python < 3.7 fallback
 
+# ── Persistent user-data directory (writable even in Program Files installs) ──
+def _get_data_dir() -> str:
+    """Return a writable data directory for Kairos. Checks env override first."""
+    override = os.environ.get("KAIROS_DATA_DIR")
+    if override:
+        path = override.strip().strip('"\'')
+    elif sys.platform == "win32":
+        appdata = os.environ.get("APPDATA") or os.path.expanduser("~/AppData/Roaming")
+        path = os.path.join(appdata, "Kairos")
+    else:
+        path = os.path.expanduser("~/.kairos")
+    os.makedirs(path, exist_ok=True)
+    return path
+
 # ── Local SQLite Storage ──────────────────────────────────────────────────────
-_SQLITE_PATH = os.path.join(os.path.dirname(__file__), 'memory.db')
+_SQLITE_PATH = os.path.join(_get_data_dir(), 'memory.db')
 
 def _sqlite_conn():
     conn = sqlite3.connect(_SQLITE_PATH)

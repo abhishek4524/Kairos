@@ -13,8 +13,19 @@ import threading
 from typing import Dict, Any, Optional
 
 # ── Log file path ─────────────────────────────────────────────────────────────
+def _get_data_dir() -> str:
+    """Return writable Kairos user data directory."""
+    override = os.environ.get("KAIROS_DATA_DIR")
+    if override:
+        return override.strip().strip('"\'')
+    if os.name == "nt":
+        appdata = os.environ.get("APPDATA") or os.path.expanduser("~/AppData/Roaming")
+        return os.path.join(appdata, "Kairos")
+    return os.path.expanduser("~/.kairos")
+
 BACKEND_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-LOGS_DIR = os.path.join(BACKEND_DIR, "logs")
+LOGS_DIR = os.path.join(_get_data_dir(), "logs")
+os.makedirs(LOGS_DIR, exist_ok=True)
 AUDIT_LOG_FILE = os.path.join(LOGS_DIR, "tool_audit.log")
 
 _lock = threading.Lock()

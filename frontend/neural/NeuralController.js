@@ -458,6 +458,39 @@ export class NeuralController {
     this.audioVolume = vol;
   }
 
+  // ── 3D Hand Gesture Manipulation (Hologram Air Drag, Span Zoom, Repulsor Blast) ──
+  applyGestureControl(scifi, dt = 0.016) {
+    if (!scifi) return;
+
+    // 1. Hand Position 3D Air Rotation & Tilt
+    const activeHandPos = scifi.r_present ? scifi.r_pos : (scifi.l_present ? scifi.l_pos : null);
+    if (activeHandPos) {
+      // Map x (0 to 1) -> targetY (-1.5 rad to 1.5 rad)
+      // Map y (0 to 1) -> targetX (-1.0 rad to 1.0 rad)
+      const targetRotY = (activeHandPos.x - 0.5) * Math.PI * 1.5;
+      const targetRotX = (activeHandPos.y - 0.5) * Math.PI * 1.0;
+
+      const lerpSpeed = (scifi.r_pinch || scifi.l_pinch) ? 14.0 : 6.0; // Pinch = fast precise drag
+      this.group.rotation.y = THREE.MathUtils.lerp(this.group.rotation.y, targetRotY, dt * lerpSpeed);
+      this.group.rotation.x = THREE.MathUtils.lerp(this.group.rotation.x, targetRotX, dt * lerpSpeed);
+    }
+
+    // 2. Hologram Span Distance Scaling (Two-hand zoom)
+    if (scifi.two_hand_dist > 0.05) {
+      // Normal two_hand_dist is 0.1 to 0.8 -> map to scale 0.5x to 3.0x
+      const targetScale = Math.max(0.4, Math.min(3.0, scifi.two_hand_dist * 3.5));
+      this.group.scale.lerp(new THREE.Vector3(targetScale, targetScale, targetScale), dt * 6.0);
+    }
+
+    // 3. Iron Man Repulsor Blast Shockwave Pulse
+    if (scifi.r_repulsor || scifi.l_repulsor) {
+      this.currentCoreScale = 1.85; // Instant energy expansion pulse
+      if (this.coreMesh) {
+        this.coreMesh.material.opacity = 0.95;
+      }
+    }
+  }
+
   // ── Master Render Loop Update ─────────────────────────────────────────────
   update(dt, totalTime) {
     this.stateTime += dt;

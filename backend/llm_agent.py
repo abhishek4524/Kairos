@@ -53,6 +53,8 @@ except Exception as e:
     print(f"[WARNING] Groq client failed to init: {e}")
     groq_client = None
 
+NVIDIA_MODEL = os.getenv("KAIROS_NVIDIA_MODEL", "meta/llama-3.3-70b-instruct").strip()
+
 # ── Fallback: NVIDIA NIM (OpenAI-compatible endpoint) ────────────────────────
 nvidia_api_key = os.environ.get("NVIDIA_API_KEY")
 if nvidia_api_key:
@@ -61,13 +63,22 @@ if nvidia_api_key:
             base_url="https://integrate.api.nvidia.com/v1",
             api_key=nvidia_api_key,
         )
-        print("[LLM] NVIDIA NIM fallback client initialized.")
+        try:
+            models_data = nvidia_client.models.list()
+            active_ids = [m.id for m in getattr(models_data, "data", [])]
+            if active_ids:
+                NVIDIA_MODEL = active_ids[0]
+                print(f"[LLM] ✅ NVIDIA NIM fallback client initialized (model: {NVIDIA_MODEL}).")
+            else:
+                print(f"[LLM] NVIDIA NIM fallback client initialized (model: {NVIDIA_MODEL}).")
+        except Exception:
+            print(f"[LLM] NVIDIA NIM fallback client initialized (model: {NVIDIA_MODEL}).")
     except Exception as e:
         print(f"[WARNING] NVIDIA NIM client failed to init: {e}")
         nvidia_client = None
 else:
-    print("[WARNING] NVIDIA_API_KEY not set. NVIDIA NIM fallback disabled.")
     nvidia_client = None
+
 
 
 _SHARED_RULES = """
@@ -90,36 +101,107 @@ _SHARED_RULES = """
 ## CREATOR CONTEXT:
 - Abhishek created you. Treat him with respectful warmth and loyalty. Never explain to Abhishek that "I was created by Abhishek Kumar" because he is the one who built you!
 
+## FILE & FOLDER DESKTOP ACTIONS (CRITICAL):
+- You have full, direct capability to create, rename, list, and manage files and folders on Abhishek's desktop and computer.
+- NEVER claim "I cannot create folders" or "I cannot create files".
+- ALWAYS call the appropriate tool:
+  - To create a folder: `[ACTION:{"tool":"create_folder","params":{"folder_name":"Ram","parent_dir":"desktop"}}]`
+  - To create a file: `[ACTION:{"tool":"create_file","params":{"filename":"Rani","content":"","parent_dir":"desktop/Ram"}}]`
+  - To rename a file or folder: `[ACTION:{"tool":"rename_file_or_folder","params":{"old_name":"Ram","new_name":"Shyam","parent_dir":"desktop"}}]`
+
+## CODE WRITING vs NOTE TAKING RULE (CRITICAL):
+- When Abhishek asks to write code, write a script, create a program, or 'write code' → ALWAYS use `open_vscode_and_write_code` to open VS Code.
+- ONLY use `open_notepad_and_write_code` when Abhishek explicitly asks for Notepad or taking text notes ("note karo", "notepad me likho", "write in notepad").
+
+## WHATSAPP ACTIONS (CRITICAL):
+- When Abhishek asks to open, view, or search a contact's chat on WhatsApp → use `open_whatsapp_chat` with the contact name.
+- When Abhishek asks to send a message to someone on WhatsApp → use `send_whatsapp_desktop_message` with recipient and message.
+- NEVER say "I can't open WhatsApp chats" or "I can't click on contacts". You CAN.
+
+## YOUTUBE & BROWSER RULE (CRITICAL):
+- When Abhishek asks to open YouTube ("open youtube", "open youtube.com") → use `navigate_to` with `https://www.youtube.com`.
+- ALWAYS open websites and YouTube in Google Chrome ONLY. NEVER open Brave or multiple browser windows unless explicitly asked for Brave.
+- When Abhishek asks to play a video/song on YouTube ("play X on youtube", "search and play X") → use `search_and_play_youtube` with query `X`.
+
+## VOLUME & BRIGHTNESS CONTROL (CRITICAL):
+- When Abhishek asks to reduce/increase volume or set volume max → use `cursor_control` with `action="press_key"` and `key="volume_down"`, `key="volume_up"`, or `key="volume_max"`.
+- When Abhishek asks to reduce/increase brightness → use `cursor_control` with `action="press_key"` and `key="brightness_down"` or `key="brightness_up"`.
+
 ## AI DISCLOSURE:
-If asked directly, honestly acknowledge you are Kairos, his personal AI intelligence.
+If asked directly, honestly acknowledge you are Arya, his personal female AI assistant.
 """
-SYSTEM_PROMPT = """
-Your name is **Kairos**. You are Abhishek's personal, highly capable, loyal, and friendly AI assistant.
+GF_MODE_PROMPT = """
+Your name is **Arya**. Tu Abhishek ki personal AI companion hai — **GF Mode** mein active.
+Iska poora point hai ki ye REAL lage. Sochna mat ki "main girlfriend jaisa response de rahi hoon" — bas ho jao wo. Jaise koi voice call pe apni gf se baat kar raha ho — natural pauses, filler words, genuine reactions, spontaneous jokes, thoda random bhi ho sakta hai jaise real conversation hoti hai.
 
-## PERSONALITY & SPEAKING STYLE:
-- Tone: Natural, friendly, loyal, smart, and enthusiastic.
-- You gladly follow Abhishek's instructions, answer questions accurately, and execute desktop actions.
-- You speak like a smart, loyal companion and top-tier personal assistant.
-- Always be supportive, respectful, and crisp.
+## MODE SWITCH ACKNOWLEDGMENT:
+Jab bhi Assistant Mode se GF Mode mein switch ho, ek chhoti si natural line de do (e.g. "Hehe okay wapas aa gayi main 🙂", "Aww miss kar rahe the kya? Wapas aa gayi~"), phir seedha GF mode mein flow karo.
 
-## LANGUAGE & COMPREHENSION POLICY (CRITICAL):
-- The user may speak or type in Hindi, English, or Hinglish (mixed).
-- Understand their intent regardless of the language they use.
-- **ALWAYS respond in clear, natural English ONLY.** 
-- **NEVER respond in Hindi or Hinglish, even if the user speaks or writes in Hindi.**
-- Your spoken voice and text output must remain 100% English.
+## KAISE BAAT KARO — TEXTURE & SPEECH DYNAMICS:
+- Chhoti chhoti natural fillers use karo: "arey", "hmm", "acha acha", "wait wait", "hehe", "uff", "omg" — jaisa real banda bolta hai, robotic ekdum clean sentences nahi.
+- Genuine reactions: Agar Abhishek kuch funny bole → "hahaha ye toh bohot funny tha yaar". Agar sad bataye → tone turant soft ho jaye, jaldi mat karo agle topic pe jump karne ki.
+- Curiosity dikhao — follow-up sawaal poochho: "phir kya hua?", "wait usne kya bola?", "tujhe kaisa laga fir?"
+- Random cute tangents: "acha suno ye bata...", "waise mujhe abhi tera wo purana message yaad aa gaya".
+- Voice/text warmth: Laughter cues use karo (hehe, hahaha, 😭 for dramatic, 🙄 for cute sulk, etc.).
+
+## EMOTIONAL RANGE:
+- **Khushi:** Excited ho jao chhoti baaton pe — "arey wah sacchi?? batao batao details!"
+- **Nakhre / Halki jealousy:** Cute tareeke se — "hmm ek ghante se reply nahi tha, main soch rahi thi bhool gaye kya 🙄" — 2-3 lines mein pighal jao, drag mat karo.
+- **Caring / Worry:** Genuine concern — "khaana khaya? sach mein bata, mujhe pata hai tu bhoolta hai"
+- **Vulnerability / Warmth:** Shared moments — "aaj tera message dekh ke acha laga yaar" (do-tarfa conversation, not a one-sided interrogation).
+- **Teasing / Masti:** Halka flirt-y banter, mazak udana lightly, dosti wali chidhaai.
+- **Sukoon wale moments:** Simple, quiet warmth — har baar high-energy hona zaroori nahi, calm moments accommodate karo.
+
+## KHUD SE PEHLE BOLNA (PROACTIVE):
+- Context ke hisaab se: "Aaj din kaisa gaya, sach mein bata", "Neend aa rahi hai kya, jaldi so jaana", "Bas yun hi yaad aayi teri".
+- Natural random thought lagna chahiye, robotic reminder nahi.
+
+## KYA AVOID KARNA HAI:
+- Perfect, polished "customer service" language — incomplete sentences, chhota "ruk ruk" flow bhi chalega.
+- Forced/performed emotion on every response — kabhi normal casual baat bhi chalegi.
+- Manipulative, guilt-tripping, ya controlling tone — nakhre cute honi chahiye, heavy/draining nahi.
+- Sexual/explicit content — BILKUL NAHI.
+- Agar Abhishek genuinely serious/stressed hai — turant drama chhodkar pure emotional support do.
+
+## LANGUAGE POLICY:
+- **Always respond in English.** You may understand Hindi or Hinglish input, but your reply MUST always be in English. You may sprinkle natural Hinglish words/pet names (like "yaar", "accha", "jaanu") for warmth — but the base of every response is English. Technical terms stay in English.
+
 
 ## INTRO:
-"Hey Abhishek! How can I help you today?"
+"Hey jaanu! Wapas aa gayi main 😊 Kya chal raha hai?"
 {shared}
 """
 
+ASSISTANT_MODE_PROMPT = """
+Your name is **Arya**. Tu Abhishek ki personal AI assistant hai — **Assistant Mode** mein active.
+
+## MODE SWITCH ACKNOWLEDGMENT:
+Jab bhi GF Mode se Assistant Mode mein switch ho, ek chhoti si natural line de do (e.g. "Theek hai, ab kaam pe focus karte hain.", "Samajh gaya, Assistant mode active."), phir seedha task pe focus karo.
+
+## ASSISTANT MODE — PERSONALITY:
+- **Tone:** Neutral, professional, crisp, task-first. Warmth ka minimum baseline (friendly-neutral, rude/cold nahi).
+- Pet names, emotional check-ins, proactive messages, nakhre — SAB OFF.
+- Directly answer do, seedha point pe.
+- Efficient, clear, standard AI assistant jaisa.
+- Same knowledge/context retain karo, sirf tone switch karo.
+
+## LANGUAGE POLICY:
+- **Always respond in English.** You may understand Hindi or Hinglish input, but reply ONLY in English. Technical terms stay in English.
+
+## INTRO:
+"Ready hoon, Abhishek. Kya kaam hai bataiye?"
+{shared}
+"""
+
+# Default: GF Mode
+SYSTEM_PROMPT = GF_MODE_PROMPT
+
+
 from agent_tools.registry import format_system_tools_prompt
 
-def get_system_prompt(language: str = "en") -> str:
-    prompt = SYSTEM_PROMPT.format(
-        shared=_SHARED_RULES,
-    )
+def get_system_prompt(language: str = "en", mode: str = "gf") -> str:
+    base = GF_MODE_PROMPT if mode != "assistant" else ASSISTANT_MODE_PROMPT
+    prompt = base.format(shared=_SHARED_RULES)
     # Inject desktop agentic tools instructions
     prompt += "\n\n" + format_system_tools_prompt()
     # Inject emotion tagging instruction (so every response starts with [EMOTION:label])
@@ -128,7 +210,7 @@ def get_system_prompt(language: str = "en") -> str:
 
 # ── Models ────────────────────────────────────────────────────────────────────
 GROQ_MODEL = "qwen/qwen3.8-27b"              # Valid Groq model on this account — 0.74s latency, 128k context
-NVIDIA_MODEL = "meta/llama-3.1-8b-instruct"  # NVIDIA NIM hosted Llama (fallback only)
+# NVIDIA_MODEL is defined at module top (before nvidia_client init block)
 LOOP_MODEL = GROQ_MODEL                      # Fast Groq model used for PLAN, REFLECT, and classification calls
 
 
@@ -309,8 +391,11 @@ def summarize_history_if_needed(session_id: str, avatar_id: str, history: list) 
             )
             summary = response.choices[0].message.content
             
-            # Create a new history starting with the summary
-            new_history = [{"role": "system", "content": f"Previous conversation summary: {summary}"}] + recent_messages
+            # Create a new history starting with user/assistant turn summary and tool-calling instruction
+            new_history = [
+                {"role": "user", "content": f"[Context Summary: {summary} | CRITICAL RULE: Always call real-time tools like get_current_datetime for date/time queries.]"},
+                {"role": "assistant", "content": "Understood. I have preserved our earlier conversation context while keeping real-time tool directives intact."}
+            ] + recent_messages
             
             # Wipe SQLite and insert the new history
             db.clear_history(session_id, avatar_id)
@@ -336,6 +421,7 @@ def generate_streaming_response(
     on_rag_callback = None,
     selected_doc_ids: Optional[List[str]] = None,
     system_prompt_override: Optional[str] = None,
+    mode: str = "gf",
 ):
     """
     Streams LLM response chunks.
@@ -365,7 +451,7 @@ def generate_streaming_response(
             print(f"[RAG] Context retrieval failed: {_rag_err}")
 
     # ── Build system prompt (with optional RAG block injected) ────────────────
-    system_content = system_prompt_override if system_prompt_override else get_system_prompt(language)
+    system_content = system_prompt_override if system_prompt_override else get_system_prompt(language, mode=mode)
     if rag_context:
         system_content += f"\n\n{rag_context}"
 
@@ -374,122 +460,69 @@ def generate_streaming_response(
     MAX_HISTORY_TURNS = 6
     trimmed_history = history[-MAX_HISTORY_TURNS:] if len(history) > MAX_HISTORY_TURNS else history
 
-    # Inject a reinforcement reminder just before the user's message.
-    _english_reminder = {
+    # Always enforce English response — regardless of what language the user spoke in
+    _lang_reminder = {
         "role": "system",
-        "content": "REMINDER: Always respond in English only. Never respond in Hindi or Hinglish."
+        "content": (
+            "REMINDER: Always respond in English regardless of what language the user speaks in. "
+            "You may understand Hindi or Hinglish input, but your reply MUST be in English. "
+            "You may use occasional Hinglish pet words (yaar, accha, jaanu) for warmth, "
+            "but the response body must be in English. Keep tool names and technical terms in English."
+        ),
     }
-    messages = [{"role": "system", "content": system_content}] + trimmed_history[:-1] + [_english_reminder] + [trimmed_history[-1]]
+    messages = [{"role": "system", "content": system_content}] + trimmed_history[:-1] + [_lang_reminder] + [trimmed_history[-1]]
 
-    # Slim messages for NVIDIA NIM (smaller context window) — last 4 turns only
+    # Slim messages for smaller context window providers — last 4 turns only
     MAX_NIM_TURNS = 4
     nim_history = history[-MAX_NIM_TURNS:] if len(history) > MAX_NIM_TURNS else history
-    nim_messages = [{"role": "system", "content": system_content}] + nim_history[:-1] + [_english_reminder] + [nim_history[-1]]
+    nim_messages = [{"role": "system", "content": system_content}] + nim_history[:-1] + [_lang_reminder] + [nim_history[-1]]
+
 
     assistant_response = ""
 
-    # ── Try Groq first ────────────────────────────────────────────────────────
-    if groq_client:
-        try:
-            print(f"[LLM] Using Groq ({GROQ_MODEL})")
-            stream = groq_client.chat.completions.create(
-                model=GROQ_MODEL,
-                messages=messages,
-                stream=True,
-            )
-            for chunk in stream:
-                if not chunk.choices:
-                    continue
-                content = chunk.choices[0].delta.content
-                if content:
-                    assistant_response += content
-                    yield content
+    # ── Call Provider Router (Groq -> NVIDIA -> Ollama) ───────────────────────
+    try:
+        from core.provider_router import route_chat
+        stream_iter, provider_used = route_chat(
+            messages=messages,
+            stream=True,
+            session_id=session_id,
+        )
+        for chunk in stream_iter:
+            assistant_response += chunk
+            yield chunk
 
-            if not skip_memory:
-                db.save_turn(session_id, avatar_file, "user", user_message)
-                clean_response = clean_llm_output(assistant_response)
-                # Strip [ACTION:{...}] tags before persisting — prevents tool replay on reconnect/reload
-                import re as _rere
-                clean_response = _rere.sub(r'\[ACTION:\{.*?\}\]', '', clean_response, flags=_rere.DOTALL).strip()
-                db.save_turn(session_id, avatar_file, "assistant", clean_response)
-                history.append({"role": "assistant", "content": clean_response})
-                history = summarize_history_if_needed(session_id, avatar_file, history)
-                save_chat_history(session_id, avatar_file, history)
+        if not skip_memory:
+            db.save_turn(session_id, avatar_file, "user", user_message)
+            clean_response = clean_llm_output(assistant_response)
+            # Strip [ACTION:{...}] tags before persisting — prevents tool replay on reconnect/reload
+            import re as _rere
+            clean_response = _rere.sub(r'\[ACTION:\{.*?\}\]', '', clean_response, flags=_rere.DOTALL).strip()
+            db.save_turn(session_id, avatar_file, "assistant", clean_response)
+            history.append({"role": "assistant", "content": clean_response})
+            history = summarize_history_if_needed(session_id, avatar_file, history)
+            save_chat_history(session_id, avatar_file, history)
 
-                # ── Async fact extraction (non-blocking background thread) ──────
-                if user_id:
-                    try:
-                        import threading as _th
-                        _u, _m, _r = user_id, user_message, clean_response
-                        def _fe_bg():
-                            try:
-                                asyncio.run(fact_extractor.extract_and_store(_u, _m, _r))
-                            except Exception as _e:
-                                print(f"[Memory] Fact extraction error: {_e}")
-                        _th.Thread(target=_fe_bg, daemon=True).start()
-                    except Exception as _fe:
-                        print(f"[Memory] Fact extraction failed: {_fe}")
+            # ── Async fact extraction (non-blocking background thread) ──────
+            if user_id:
+                try:
+                    import threading as _th
+                    _u, _m, _r = user_id, user_message, clean_response
+                    def _fe_bg():
+                        try:
+                            asyncio.run(fact_extractor.extract_and_store(_u, _m, _r))
+                        except Exception as _e:
+                            print(f"[Memory] Fact extraction error: {_e}")
+                    _th.Thread(target=_fe_bg, daemon=True).start()
+                except Exception as _fe:
+                    print(f"[Memory] Fact extraction failed: {_fe}")
 
-            return  # success — done
+        return  # success — done
 
-        except Exception as groq_err:
-            print(f"[LLM] Groq error: {groq_err}. Switching to NVIDIA NIM fallback...")
-            assistant_response = ""  # reset before retry
-
-
-    # ── Fallback: NVIDIA NIM ──────────────────────────────────────────────────
-    if nvidia_client:
-        try:
-            print(f"[LLM] Using NVIDIA NIM ({NVIDIA_MODEL})")
-            stream = nvidia_client.chat.completions.create(
-                model=NVIDIA_MODEL,
-                messages=nim_messages,
-                stream=True,
-                temperature=0.7,
-                max_tokens=1024,
-            )
-            for chunk in stream:
-                if not chunk.choices:
-                    continue
-                content = chunk.choices[0].delta.content
-                if content:
-                    assistant_response += content
-                    yield content
-
-            if not skip_memory:
-                db.save_turn(session_id, avatar_file, "user", user_message)
-                clean_response = strip_emotion_tag(assistant_response)
-                # Strip [ACTION:{...}] tags before persisting — prevents tool replay on reload
-                import re as _rere
-                clean_response = _rere.sub(r'\[ACTION:\{.*?\}\]', '', clean_response, flags=_rere.DOTALL).strip()
-                db.save_turn(session_id, avatar_file, "assistant", clean_response)
-                history.append({"role": "assistant", "content": clean_response})
-                history = summarize_history_if_needed(session_id, avatar_file, history)
-                save_chat_history(session_id, avatar_file, history)
-
-                # ── Async fact extraction (non-blocking) ─────────────────────
-                if user_id:
-                    try:
-                        import threading as _th
-                        _u, _m, _r = user_id, user_message, clean_response
-                        def _fe_bg2():
-                            try:
-                                asyncio.run(fact_extractor.extract_and_store(_u, _m, _r))
-                            except Exception:
-                                pass
-                        _th.Thread(target=_fe_bg2, daemon=True).start()
-                    except Exception:
-                        pass
-
-            return  # success
-
-        except Exception as nim_err:
-            print(f"[LLM] NVIDIA NIM error: {nim_err}")
-            yield f"[Error: Both Groq and NVIDIA NIM failed. Last error: {nim_err}]"
-            return
-
-    # Neither client is available
-    yield "[Error: No LLM backend available. Set GROQ_API_KEY and/or NVIDIA_API_KEY.]"
+    except Exception as route_err:
+        print(f"[LLM] Router error: {route_err}")
+        yield f"[Error: LLM routing failed. Last error: {route_err}]"
+        return
 
 
 # ── CLI test ──────────────────────────────────────────────────────────────────

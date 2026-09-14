@@ -27,6 +27,27 @@ BACKEND_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 KAIROS_DIR = BACKEND_DIR
 
 
+# ── Persistent Storage Path Resolution ────────────────────────────────────────
+def get_user_data_dir() -> str:
+    """
+    Returns the system-specific User Data directory for Kairos.
+    Ensures persistent storage across app upgrades and prevents permission issues.
+    - Windows: %APPDATA%/Kairos
+    - macOS/Linux: ~/.kairos
+    """
+    env_override = os.environ.get("KAIROS_DATA_DIR")
+    if env_override:
+        path = env_override.strip().strip('"\'')
+    elif IS_WINDOWS:
+        appdata = os.environ.get("APPDATA") or os.path.expanduser("~/AppData/Roaming")
+        path = os.path.join(appdata, "Kairos")
+    else:
+        path = os.path.expanduser("~/.kairos")
+    
+    os.makedirs(path, exist_ok=True)
+    return path
+
+
 # ── Brave Browser Resolution ──────────────────────────────────────────────────
 def get_brave_path() -> Optional[str]:
     """
@@ -156,6 +177,34 @@ def get_chrome_path() -> Optional[str]:
             if os.path.exists(path):
                 return path
 
+    return None
+
+
+def get_chrome_user_data_dir() -> Optional[str]:
+    """
+    Returns the standard system path for Google Chrome's User Data directory.
+    - Windows: %LOCALAPPDATA%/Google/Chrome/User Data
+    - macOS: ~/Library/Application Support/Google/Chrome
+    - Linux: ~/.config/google-chrome
+    """
+    env_override = os.environ.get("KAIROS_CHROME_USER_DATA_DIR")
+    if env_override:
+        clean_override = env_override.strip().strip('"\'')
+        if os.path.exists(clean_override):
+            return clean_override
+
+    if IS_WINDOWS:
+        local_appdata = os.environ.get("LOCALAPPDATA") or os.path.expanduser("~/AppData/Local")
+        path = os.path.join(local_appdata, "Google", "Chrome", "User Data")
+    elif IS_MACOS:
+        path = os.path.expanduser("~/Library/Application Support/Google/Chrome")
+    elif IS_LINUX:
+        path = os.path.expanduser("~/.config/google-chrome")
+    else:
+        path = None
+
+    if path and os.path.exists(path):
+        return path
     return None
 
 

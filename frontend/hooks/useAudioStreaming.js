@@ -25,6 +25,7 @@ export function useAudioStreaming({
   onGestureChange,   // (gesture) => void
   onAudioPlayEvent,  // (event) => void
   onMicError,        // (error) => void
+  onModeChange,      // (mode) => void — 'gf' | 'assistant'
 }) {
   const [isRecording, setIsRecording] = useState(false);
   
@@ -43,10 +44,10 @@ export function useAudioStreaming({
   const selectedAvatarRef = useRef(selectedAvatar);
   const preferredLanguageRef = useRef(preferredLanguage);
   const userIdRef = useRef(userId);
-  const callbacksRef = useRef({ onMessageReceived, onStatusChange, onEmotionChange, onGestureChange, onAudioPlayEvent, onMicError });
+  const callbacksRef = useRef({ onMessageReceived, onStatusChange, onEmotionChange, onGestureChange, onAudioPlayEvent, onMicError, onModeChange });
   
   useEffect(() => {
-    callbacksRef.current = { onMessageReceived, onStatusChange, onEmotionChange, onGestureChange, onAudioPlayEvent, onMicError };
+    callbacksRef.current = { onMessageReceived, onStatusChange, onEmotionChange, onGestureChange, onAudioPlayEvent, onMicError, onModeChange };
   });
 
   useEffect(() => { userIdRef.current = userId; }, [userId]);
@@ -197,6 +198,8 @@ export function useAudioStreaming({
         } else if (msg.type === 'barge_in') {
           stopAndClearAudio();
           neuralStateMachine.onCompleted();
+        } else if (msg.type === 'mode_changed') {
+          if (callbacksRef.current.onModeChange) callbacksRef.current.onModeChange(msg.mode);
         }
       } else {
         if (callbacksRef.current.onStatusChange) callbacksRef.current.onStatusChange('Speaking');
@@ -340,6 +343,17 @@ export function useAudioStreaming({
     }
   };
 
+  // Send any config_update payload to backend (mode switch, language change, etc.)
+  const sendConfigUpdate = (payload) => {
+    if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+      wsRef.current.send(JSON.stringify({
+        type: 'config_update',
+        user_id: userIdRef.current,
+        ...payload,
+      }));
+    }
+  };
+
   return {
     isRecording,
     startRecording,
@@ -349,5 +363,6 @@ export function useAudioStreaming({
     triggerIntro,
     updateVadSensitivity,
     updateSelectedDocs,
+    sendConfigUpdate,
   };
 }

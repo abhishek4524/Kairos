@@ -14,7 +14,7 @@ TOOLS_SCHEMA = [
         "type": "function",
         "function": {
             "name": "navigate_to",
-            "description": "Navigate to any URL or search query in Brave browser. If given a query or search terms, uses the search engine.",
+            "description": "Navigate to any URL or search query in Google Chrome browser. If given a query or search terms, uses the search engine.",
             "parameters": {
                 "type": "object",
                 "properties": {
@@ -215,6 +215,77 @@ TOOLS_SCHEMA = [
             }
         }
     },
+    {
+        "type": "function",
+        "function": {
+            "name": "youtube_like_video",
+            "description": "Like the currently playing YouTube video.",
+            "parameters": {
+                "type": "object",
+                "properties": {},
+                "required": []
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "youtube_subscribe",
+            "description": "Subscribe to the YouTube channel of the currently playing video.",
+            "parameters": {
+                "type": "object",
+                "properties": {},
+                "required": []
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "open_github",
+            "description": "Open GitHub website or profile in browser.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "path": { "type": "string", "description": "Optional path or page (e.g. 'notifications', 'repositories', 'explore')" }
+                },
+                "required": []
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "open_instagram",
+            "description": "Open Instagram in browser.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "path": { "type": "string", "description": "Optional path (e.g. 'direct', 'reels', 'explore', username)" }
+                },
+                "required": []
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "instagram_action",
+            "description": "Perform actions on Instagram (like_post, search_user, view_reels, view_messages, scroll).",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "action": {
+                        "type": "string",
+                        "enum": ["like_post", "search_user", "view_reels", "view_messages", "scroll_down", "scroll_up"],
+                        "description": "Action to perform on Instagram"
+                    },
+                    "target": { "type": "string", "description": "Optional target user or query" }
+                },
+                "required": ["action"]
+            }
+        }
+    },
 
     # ── Desktop OS & Application Management ──────────────────────────────────
     {
@@ -396,6 +467,23 @@ TOOLS_SCHEMA = [
             }
         }
     },
+    {
+        "type": "function",
+        "function": {
+            "name": "open_whatsapp_chat",
+            "description": "Open, search, or focus a specific contact's chat window in native WhatsApp Desktop (without sending a message). Use this whenever user says 'open chat of X', 'show chat of X', or 'search contact X on WhatsApp'.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "recipient": {
+                        "type": "string",
+                        "description": "Contact name to search and open chat for (e.g. 'Akhil Dondal', 'Vansh', 'Mom')"
+                    }
+                },
+                "required": ["recipient"]
+            }
+        }
+    },
     # ── Live Real-Time Knowledge, News & Utility Tools (Read-Only) ────────────
     {
         "type": "function",
@@ -411,6 +499,27 @@ TOOLS_SCHEMA = [
                     }
                 },
                 "required": []
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "get_weather",
+            "description": "Get current live weather for any city or location worldwide. Use this for ANY weather question: 'what's the weather in Mumbai', 'kaisa mausam hai Delhi mein', 'will it rain today in London', etc. Returns temperature, feels-like, humidity, wind speed, and a spoken description.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "city": {
+                        "type": "string",
+                        "description": "City name to get weather for (e.g. 'Mumbai', 'London', 'New York', 'Muzaffarnagar')"
+                    },
+                    "country": {
+                        "type": "string",
+                        "description": "Optional country name or ISO code to disambiguate cities with the same name (e.g. 'India', 'US', 'UK')"
+                    }
+                },
+                "required": ["city"]
             }
         }
     },
@@ -444,7 +553,173 @@ TOOLS_SCHEMA = [
                         "description": "The search query or general question (e.g. 'who won the match yesterday', 'weather in Delhi', 'latest SpaceX launch')"
                     }
                 },
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "query_spreadsheet",
+            "description": "Execute pandas numeric aggregations, sums, averages, column stats, or filtered row lookups on an ingested CSV or Excel spreadsheet.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "doc_name": {
+                        "type": "string",
+                        "description": "Optional filename of the ingested spreadsheet (e.g. 'sales.xlsx', 'data.csv')"
+                    },
+                    "query": {
+                        "type": "string",
+                        "description": "The numeric or analytical question (e.g. 'what is the sum of column Y', 'average price', 'total rows')"
+                    }
+                },
                 "required": ["query"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "create_folder",
+            "description": "Create a new folder or directory at the specified location (e.g. Desktop, Documents, Downloads, or custom folder path).",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "folder_name": {
+                        "type": "string",
+                        "description": "Name or relative path of the folder to create (e.g. 'oncecene', 'projects/my_app', 'Desktop/photos')"
+                    },
+                    "parent_dir": {
+                        "type": "string",
+                        "description": "Optional parent directory location (e.g. 'desktop', 'documents', 'downloads')"
+                    }
+                },
+                "required": ["folder_name"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "create_file",
+            "description": "Create a new file with optional text content on Desktop, Documents, or specified path.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "filename": {
+                        "type": "string",
+                        "description": "Name or path of the file to create (e.g. 'notes.txt', 'script.py', 'Desktop/todo.txt')"
+                    },
+                    "content": {
+                        "type": "string",
+                        "description": "Optional initial text content to write into the file"
+                    },
+                    "parent_dir": {
+                        "type": "string",
+                        "description": "Optional parent directory location (e.g. 'desktop', 'documents')"
+                    }
+                },
+                "required": ["filename"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "rename_file_or_folder",
+            "description": "Rename or move an existing file or folder to a new name or path.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "old_name": {
+                        "type": "string",
+                        "description": "Current name or path of the file or folder (e.g. 'oncecene', 'notes.txt')"
+                    },
+                    "new_name": {
+                        "type": "string",
+                        "description": "New name or path for the file or folder (e.g. 'new_project', 'updated_notes.txt')"
+                    },
+                    "parent_dir": {
+                        "type": "string",
+                        "description": "Optional parent directory location if relative (e.g. 'desktop')"
+                    }
+                },
+                "required": ["old_name", "new_name"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "list_directory_contents",
+            "description": "List files and subfolders inside a given folder (e.g. Desktop, Documents, Downloads).",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "path": {
+                        "type": "string",
+                        "description": "Directory path or keyword location to list (e.g. 'desktop', 'documents', 'C:/Users/...')"
+                    }
+                }
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "start_camera_gesture_control",
+            "description": "Start camera hand gesture control. When active, opening right hand finger tips increases screen brightness, closing right hand finger tips decreases screen brightness, opening left hand finger tips increases volume, and closing left hand finger tips decreases volume.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "show_preview": {
+                        "type": "boolean",
+                        "description": "Optional flag to show live camera feedback preview window (default false)"
+                    }
+                },
+                "required": []
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "stop_camera_gesture_control",
+            "description": "Stop the camera hand gesture control system.",
+            "parameters": {
+                "type": "object",
+                "properties": {},
+                "required": []
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "get_camera_gesture_status",
+            "description": "Check if camera hand gesture control is active and get current brightness, volume, mode ('system' or 'avatar'), and detected hand state.",
+            "parameters": {
+                "type": "object",
+                "properties": {},
+                "required": []
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "set_camera_gesture_mode",
+            "description": "Switch the camera hand gesture control mode between system control ('system': Brightness/Volume) and 3D model control ('avatar': 3D rotation and zoom).",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "mode": {
+                        "type": "string",
+                        "description": "Mode to switch to: 'system' for Brightness/Volume, or 'avatar' for 3D model rotation/zoom",
+                        "enum": ["system", "avatar"]
+                    }
+                },
+                "required": ["mode"]
             }
         }
     }
@@ -455,7 +730,6 @@ SENSITIVE_TOOLS = {
     "check_whatsapp_notifications": "Read WhatsApp messages/notifications",
     "delete_file": "Delete a file from the desktop",
     "send_email": "Send an email",
-    "send_whatsapp_desktop_message": "Send a native WhatsApp Desktop message"
 }
 
 def is_sensitive(tool_name: str) -> bool:
@@ -481,6 +755,11 @@ TOOL_AGENT_MAP: dict = {
     "youtube_search":          "browsing_agent",
     "youtube_play_video":      "browsing_agent",
     "youtube_control":         "browsing_agent",
+    "youtube_like_video":      "browsing_agent",
+    "youtube_subscribe":       "browsing_agent",
+    "open_github":              "browsing_agent",
+    "open_instagram":           "browsing_agent",
+    "instagram_action":         "browsing_agent",
     "open_brave":              "browsing_agent",
     "work_mode":               "browsing_agent",
     # coding_agent
@@ -497,11 +776,22 @@ TOOL_AGENT_MAP: dict = {
     "send_email":                     "system_agent",
     "send_whatsapp_message":          "system_agent",
     "send_whatsapp_desktop_message":  "system_agent",
+    "open_whatsapp_chat":             "system_agent",
     "check_whatsapp_notifications":   "system_agent",
+    "create_folder":                  "system_agent",
+    "create_file":                    "system_agent",
+    "rename_file_or_folder":          "system_agent",
+    "list_directory_contents":        "system_agent",
+    "start_camera_gesture_control":   "system_agent",
+    "stop_camera_gesture_control":    "system_agent",
+    "get_camera_gesture_status":     "system_agent",
+    "set_camera_gesture_mode":       "system_agent",
     # info_agent (Live Knowledge & Utilities)
     "get_current_datetime":    "info_agent",
+    "get_weather":             "info_agent",
     "get_news":                "info_agent",
     "answer_general_question": "info_agent",
+    "query_spreadsheet":       "info_agent",
     # memory_agent — no action tools, uses memory_store directly
     # general_agent — no tools
 }
@@ -563,7 +853,7 @@ def format_system_tools_prompt(tool_names: list = None) -> str:
 
     # Desktop / OS tools
     os_tools = [
-        ("open_app",     "`open_app` → `{\"app_name\":\"brave\"}`"),
+        ("open_app",     "`open_app` → `{\"app_name\":\"chrome\"}`"),
         ("open_brave",   "`open_brave` → `{}` — launch/focus Brave browser"),
         ("open_vscode",  "`open_vscode` → `{}` — launch Visual Studio Code"),
         ("close_app",    "`close_app` → `{\"app_name\":\"calc\"}`"),
@@ -575,9 +865,21 @@ def format_system_tools_prompt(tool_names: list = None) -> str:
     if os_entries:
         lines += ["", "DESKTOP APPS & OS TOOLS:"] + os_entries
 
+    # File & Folder Management tools
+    file_tools = [
+        ("create_folder",          "`create_folder` → `{\"folder_name\":\"oncecene\",\"parent_dir\":\"desktop\"}` — create folder on Desktop or path"),
+        ("create_file",            "`create_file` → `{\"filename\":\"notes.txt\",\"content\":\"hello\",\"parent_dir\":\"desktop\"}` — create text file"),
+        ("rename_file_or_folder",  "`rename_file_or_folder` → `{\"old_name\":\"oncecene\",\"new_name\":\"my_project\",\"parent_dir\":\"desktop\"}` — rename folder or file"),
+        ("list_directory_contents", "`list_directory_contents` → `{\"path\":\"desktop\"}` — list files & folders"),
+    ]
+    file_entries = [desc for name, desc in file_tools if _include(name)]
+    if file_entries:
+        lines += ["", "FILE & FOLDER MANAGEMENT TOOLS:"] + file_entries
+
     # Info / live knowledge tools
     info_tools = [
         ("get_current_datetime", "`get_current_datetime` → `{}` — get current date, day, and time in local timezone"),
+        ("get_weather",          "`get_weather` → `{\"city\":\"Mumbai\"}` — live current weather (temp, humidity, wind, conditions)"),
         ("get_news",             "`get_news` → `{\"topic_or_location\":\"Muzaffarnagar\"}` — live city/topic news"),
         ("answer_general_question", "`answer_general_question` → `{\"query\":\"who won the cricket match yesterday\"}` — live web search"),
     ]
@@ -587,17 +889,18 @@ def format_system_tools_prompt(tool_names: list = None) -> str:
 
     # Coding tools
     code_tools = [
-        ("open_notepad_and_write_code", "`open_notepad_and_write_code` → `{\"filename\":\"script.py\",\"code\":\"...\"}`"),
-        ("open_vscode_and_write_code",  "`open_vscode_and_write_code` → `{\"filename\":\"main.py\",\"code\":\"...\"}`"),
+        ("open_vscode_and_write_code",  "`open_vscode_and_write_code` → `{\"filename\":\"main.py\",\"code\":\"...\"}` — DEFAULT for writing code, scripts, or programs"),
+        ("open_notepad_and_write_code", "`open_notepad_and_write_code` → `{\"filename\":\"notes.txt\",\"code\":\"...\"}` — ONLY when user explicitly asks for Notepad or notes"),
         ("write_and_run_sandbox_code",  "`write_and_run_sandbox_code` → `{\"language\":\"python\",\"code\":\"...\",\"auto_run\":true}`"),
     ]
     code_entries = [desc for name, desc in code_tools if _include(name)]
     if code_entries:
-        lines += ["", "CODE TOOLS:"] + code_entries
+        lines += ["", "CODE TOOLS (DEFAULT to open_vscode_and_write_code for code; use open_notepad_and_write_code ONLY for explicit text notes):"] + code_entries
 
-    # Communication / destructive tools
+    # Communication & Messaging tools
     comm_tools = [
-        ("send_whatsapp_desktop_message", "`send_whatsapp_desktop_message` → `{\"recipient\":\"Vansh Kumar\",\"message\":\"hi\"}`"),
+        ("open_whatsapp_chat",             "`open_whatsapp_chat` → `{\"recipient\":\"Akhil Dondal\"}` — open, search, or focus a contact's chat in WhatsApp Desktop"),
+        ("send_whatsapp_desktop_message", "`send_whatsapp_desktop_message` → `{\"recipient\":\"Akhil Dondal\",\"message\":\"hi\"}` — send message in WhatsApp Desktop"),
         ("send_whatsapp_message",         "`send_whatsapp_message` → `{\"recipient\":\"Vansh\",\"message\":\"hi\"}` — WhatsApp Web fallback"),
         ("check_whatsapp_notifications",  "`check_whatsapp_notifications` → `{}` — open WhatsApp Web"),
         ("delete_file",                   "`delete_file` → `{\"filename\":\"report.pdf\"}` — moves to trash with confirmation"),
@@ -605,13 +908,15 @@ def format_system_tools_prompt(tool_names: list = None) -> str:
     ]
     comm_entries = [desc for name, desc in comm_tools if _include(name)]
     if comm_entries:
-        lines += ["", "COMMUNICATION & DESTRUCTIVE TOOLS (require confirmation):"] + comm_entries
+        lines += ["", "COMMUNICATION & MESSAGING TOOLS:"] + comm_entries
 
-    # Disambiguation rules (only if WhatsApp desktop is in scope)
-    if _include("send_whatsapp_desktop_message"):
+    # WhatsApp rules (only if WhatsApp tools are in scope)
+    if _include("send_whatsapp_desktop_message") or _include("open_whatsapp_chat"):
         lines += [
             "",
-            "CONTACT DISAMBIGUATION RULES:",
+            "WHATSAPP ACTION RULES:",
+            "- When user says 'open chat of X', 'show chat of X', 'search contact X', 'open chat once', or 'go to X chat' → ALWAYS output `[ACTION:{\"tool\":\"open_whatsapp_chat\",\"params\":{\"recipient\":\"X\"}}]`.",
+            "- When user says 'send message M to X', 'write M to X', or 'say M to X' → ALWAYS output `[ACTION:{\"tool\":\"send_whatsapp_desktop_message\",\"params\":{\"recipient\":\"X\",\"message\":\"M\"}}]`.",
             "- If `send_whatsapp_desktop_message` returns AMBIGUOUS_RECIPIENT, ask the user to clarify. Do NOT guess.",
         ]
 

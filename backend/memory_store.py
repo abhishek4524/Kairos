@@ -21,13 +21,27 @@ try:
 except Exception:
     pass
 
+# ── Persistent user-data directory (writable even in Program Files installs) ──
+def _get_data_dir() -> str:
+    """Return a writable data directory for Kairos — %APPDATA%\\Kairos on Windows."""
+    override = os.environ.get("KAIROS_DATA_DIR")
+    if override:
+        path = override.strip().strip('"\'')
+    elif sys.platform == "win32":
+        appdata = os.environ.get("APPDATA") or os.path.expanduser("~/AppData/Roaming")
+        path = os.path.join(appdata, "Kairos")
+    else:
+        path = os.path.expanduser("~/.kairos")
+    os.makedirs(path, exist_ok=True)
+    return path
+
 # ── ChromaDB ──────────────────────────────────────────────────────────────────
 try:
     import chromadb
     from chromadb.config import Settings
     from chromadb.utils import embedding_functions
 
-    _CHROMA_DIR = os.path.join(os.path.dirname(__file__), "chroma_db")
+    _CHROMA_DIR = os.path.join(_get_data_dir(), "chroma_db")
     os.makedirs(_CHROMA_DIR, exist_ok=True)
 
     _chroma_client = chromadb.PersistentClient(path=_CHROMA_DIR)
@@ -63,7 +77,7 @@ except Exception as _e:
 # Stores display metadata (pinned, timestamps, source) so the UI can list
 # memories without doing a ChromaDB full-scan.
 
-_SQLITE_PATH = os.path.join(os.path.dirname(__file__), "memory.db")
+_SQLITE_PATH = os.path.join(_get_data_dir(), "memory.db")
 
 def _conn():
     return sqlite3.connect(_SQLITE_PATH)
@@ -530,6 +544,44 @@ def register_document(user_id: str, doc_id: str, doc_name: str, chunk_count: int
     )
     con.commit()
     con.close()
+
+
+def reindex_all_local() -> Dict[str, int]:
+    """
+    Background/one-time routine to re-index all memories and documents from SQLite into ChromaDB.
+    Ensures vector index consistency when switching between cloud/local embedding models.
+    """
+    if not CHROMA_AVAILABLE:
+        return {"facts_reindexed": 0, "chunks_reindexed": 0}
+
+    con = _conn()
+    items = con.execute("SELECT id, user_id, type, content, source FROM memory_items").fetchall()
+    con.close()
+
+    facts_count = 0
+    chunks_count = 0
+
+    for item_id, user_id, item_type, content, source in items:
+        try:
+            if item_type == "fact":
+                _facts_collection.upsert(
+                    ids=[item_id],
+                    documents=[content],
+                    metadatas=[{"user_id": user_id, "source": source, "type": "fact"}],
+                )
+                facts_count += 1
+            elif item_type == "document_chunk":
+                _docs_collection.upsert(
+                    ids=[item_id],
+                    documents=[content],
+                    metadatas=[{"user_id": user_id, "doc_id": source, "type": "document_chunk"}],
+                )
+                chunks_count += 1
+        except Exception as e:
+            print(f"[MemoryStore] Reindex error for item {item_id}: {e}")
+
+    print(f"[MemoryStore] Reindexed {facts_count} facts and {chunks_count} document chunks.")
+    return {"facts_reindexed": facts_count, "chunks_reindexed": chunks_count}
 
 
 # ── Internal helpers ───────────────────────────────────────────────────────────

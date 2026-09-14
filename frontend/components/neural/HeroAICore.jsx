@@ -11,6 +11,7 @@ export default function HeroAICore({
   audioPlayEvent,
   userId = 'default_user',
   qualityTier = 'high',
+  gestureOverride = null,
 }) {
   return (
     <div className="relative flex-1 flex flex-col items-center justify-center overflow-hidden w-full h-full bg-[#02040a]">
@@ -19,6 +20,7 @@ export default function HeroAICore({
         audioPlayEvent={audioPlayEvent}
         userId={userId}
         qualityTier={qualityTier}
+        gestureOverride={gestureOverride}
       />
     </div>
   );

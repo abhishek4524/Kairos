@@ -24,7 +24,7 @@ CORE_SECURITY_FILES = {
     os.path.abspath(os.path.join(BACKEND_DIR, "agent_tools", "permissions.py")),
     os.path.abspath(os.path.join(BACKEND_DIR, "agent_tools", "audit_logger.py")),
     os.path.abspath(os.path.join(BACKEND_DIR, "agent_tools", "SECURITY.md")),
-    os.path.abspath(os.path.join(BACKEND_DIR, "logs", "tool_audit.log")),
+    os.path.abspath(audit_logger.AUDIT_LOG_FILE),
     os.path.abspath(os.path.join(BACKEND_DIR, ".env")),
 }
 

@@ -4,7 +4,7 @@ import {
   MessageSquare, Settings, History, LayoutDashboard, 
   BookOpen, Brain, Copy, Sparkles, Cpu, Bot, 
   CheckCircle2, XCircle, Code, AppWindow, Youtube, Terminal,
-  FileText, Check, ChevronRight, Play, MousePointer, ArrowDownUp
+  FileText, Check, ChevronRight, ChevronLeft, Play, MousePointer, ArrowDownUp
 } from 'lucide-react';
 
 function ActionChip({ action, onApprove, onDeny, onOpenSandbox }) {
@@ -263,6 +263,7 @@ export default function ChatPanel({
   onVadSensitivityChange 
 }) {
   const scrollRef = useRef(null);
+  const [isCollapsed, setIsCollapsed] = useState(false);
   const [availableDocs, setAvailableDocs] = useState([]);
   const [isDocSelectorOpen, setIsDocSelectorOpen] = useState(false);
 
@@ -291,6 +292,71 @@ export default function ChatPanel({
 
   const allDocIds = availableDocs.map(d => d.doc_id);
   const activeCount = selectedDocIds === null ? availableDocs.length : selectedDocIds.length;
+
+  if (isCollapsed) {
+    return (
+      <div className="w-14 flex flex-col h-full bg-[var(--surface-glass)] backdrop-blur-3xl border-l border-[var(--border-glass)] z-20 shrink-0 relative items-center py-3.5 gap-3">
+        {/* Expand button */}
+        <button
+          onClick={() => setIsCollapsed(false)}
+          className="p-2 rounded-xl bg-blue-600/20 text-blue-300 hover:bg-blue-600/30 border border-blue-500/40 transition-all cursor-pointer shadow-sm"
+          title="Expand Conversation Panel"
+        >
+          <ChevronLeft size={16} />
+        </button>
+
+        <div className="w-8 h-px bg-slate-800 my-1" />
+
+        <button
+          onClick={() => setIsCollapsed(false)}
+          className="p-2 rounded-xl bg-slate-900/80 hover:bg-blue-600/20 hover:text-blue-300 text-slate-300 border border-slate-700/60 cursor-pointer"
+          title="Open Conversation"
+        >
+          <MessageSquare size={16} />
+        </button>
+
+        {onMemoryClick && (
+          <button
+            onClick={onMemoryClick}
+            className="p-2 rounded-xl bg-slate-900/80 hover:bg-blue-600/20 hover:text-blue-300 text-slate-300 border border-slate-700/60 cursor-pointer"
+            title="Long-Term Memory & Documents"
+          >
+            <Brain size={16} />
+          </button>
+        )}
+
+        {onSandboxClick && (
+          <button
+            onClick={onSandboxClick}
+            className="p-2 rounded-xl bg-slate-900/80 hover:bg-blue-600/20 hover:text-blue-300 text-slate-300 border border-slate-700/60 cursor-pointer"
+            title="Code Sandbox"
+          >
+            <Code size={16} />
+          </button>
+        )}
+
+        {onHistoryClick && (
+          <button
+            onClick={onHistoryClick}
+            className="p-2 rounded-xl bg-slate-900/80 hover:bg-blue-600/20 hover:text-blue-300 text-slate-300 border border-slate-700/60 cursor-pointer"
+            title="Conversation History"
+          >
+            <History size={16} />
+          </button>
+        )}
+
+        {onSettingsClick && (
+          <button
+            onClick={onSettingsClick}
+            className="p-2 rounded-xl bg-slate-900/80 hover:bg-blue-600/20 hover:text-blue-300 text-slate-300 border border-slate-700/60 cursor-pointer"
+            title="Settings"
+          >
+            <Settings size={16} />
+          </button>
+        )}
+      </div>
+    );
+  }
 
   return (
     <div className="w-full md:w-[390px] lg:w-[440px] flex flex-col h-full bg-[var(--surface-glass)] backdrop-blur-3xl border-l border-[var(--border-glass)] z-20 shrink-0 relative shadow-2xl">
@@ -363,6 +429,15 @@ export default function ChatPanel({
             title="Voice & App Settings"
           >
             <Settings size={15} />
+          </button>
+
+          {/* Minimize Button */}
+          <button 
+            onClick={() => setIsCollapsed(true)} 
+            className="p-2 rounded-xl bg-slate-800/80 hover:bg-blue-600/20 hover:text-blue-300 text-slate-400 border border-slate-700/60 transition-all cursor-pointer shadow-sm ml-1" 
+            title="Minimize Conversation Panel"
+          >
+            <ChevronRight size={15} />
           </button>
         </div>
       </div>

@@ -10,6 +10,7 @@ import MemoryPanel from '../memory/MemoryPanel';
 import CodeSandbox from '../sandbox/CodeSandbox';
 import SettingsModal from '../settings/SettingsModal';
 import HistoryList from '../chat/HistoryList';
+import GesturePreview from './GesturePreview';
 import { useAudioStreaming } from '../../hooks/useAudioStreaming';
 import { MessageSquare, Clock, X, Sparkles } from 'lucide-react';
 
@@ -56,6 +57,7 @@ export default function AppLayout() {
   const [isMemoryOpen, setIsMemoryOpen] = useState(false);
   const [isSandboxOpen, setIsSandboxOpen] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const [personaMode, setPersonaMode] = useState(() => localStorage.getItem('kairos_persona_mode') || 'gf');
   const [sandboxConfig, setSandboxConfig] = useState({
     code: '',
     language: 'python',
@@ -76,6 +78,7 @@ export default function AppLayout() {
     sendTextInput,
     updateVadSensitivity,
     updateSelectedDocs,
+    sendConfigUpdate,
   } = useAudioStreaming({
     sessionId,
     userId,
@@ -94,7 +97,11 @@ export default function AppLayout() {
     onEmotionChange: setEmotion,
     onGestureChange: setGestureOverride,
     onAudioPlayEvent: setAudioPlayEvent,
-    onMicError: setMicError
+    onMicError: setMicError,
+    onModeChange: (mode) => {
+      setPersonaMode(mode);
+      localStorage.setItem('kairos_persona_mode', mode);
+    },
   });
 
   // ── Document Selection for RAG Context ──────────────────────────────────────
@@ -185,6 +192,12 @@ export default function AppLayout() {
 
   const toggleMic = () => isRecording ? stopRecording() : startRecording();
 
+  const handlePersonaModeSwitch = (mode) => {
+    setPersonaMode(mode);
+    localStorage.setItem('kairos_persona_mode', mode);
+    sendConfigUpdate({ mode });
+  };
+
   const activeAvatarObj = { name: 'Kairos', accent: '#3b82f6' };
 
   return (
@@ -194,6 +207,9 @@ export default function AppLayout() {
     >
       {/* Custom sci-fi title bar — only renders in Electron */}
       <ElectronTitleBar />
+
+      {/* Camera Gesture HUD — floating top-left */}
+      <GesturePreview onGestureData={setGestureOverride} />
 
       {/* History Panel Overlay */}
       <AnimatePresence>
@@ -305,6 +321,7 @@ export default function AppLayout() {
           audioPlayEvent={audioPlayEvent}
           userId={userId}
           qualityTier="high"
+          gestureOverride={gestureOverride}
         />
       </div>
 
@@ -346,6 +363,8 @@ export default function AppLayout() {
           onOpenSandbox={handleOpenSandbox}
           vadSensitivity={vadSensitivity}
           onVadSensitivityChange={handleVadSensitivityChange}
+          personaMode={personaMode}
+          onPersonaModeSwitch={handlePersonaModeSwitch}
         />
       </div>
 
@@ -362,6 +381,8 @@ export default function AppLayout() {
           activeAvatar={activeAvatarObj}
           isContinuousListening={isContinuousListening}
           onToggleContinuousListening={handleToggleContinuousListening}
+          personaMode={personaMode}
+          onPersonaModeSwitch={handlePersonaModeSwitch}
         />
       </div>
       

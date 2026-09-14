@@ -3,7 +3,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { 
   Settings, User, Mic, Volume2, Globe, Shield, Trash2, Download, 
   Check, X, RefreshCw, Sparkles, Terminal, Code, Youtube, MessageSquare, 
-  Sliders, Moon, Sun, AlertTriangle, Eye
+  Sliders, Moon, Sun, AlertTriangle, Eye, Camera
 } from 'lucide-react';
 
 const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:8000';
@@ -128,6 +128,7 @@ export default function SettingsModal({
             {[
               { id: 'general', label: 'General', icon: User },
               { id: 'voice', label: 'Voice & Mic', icon: Mic },
+              { id: 'gesture', label: 'Gesture Control', icon: Camera },
               { id: 'integrations', label: 'Integrations', icon: Sliders },
               { id: 'privacy', label: 'Memory & Privacy', icon: Shield },
             ].map(tab => {
@@ -270,7 +271,63 @@ export default function SettingsModal({
               </motion.div>
             )}
 
-            {/* ── Tab: Integrations ─────────────────────────────────── */}
+            {/* ── Tab: Gesture Control ──────────────────────────────── */}
+            {activeTab === 'gesture' && (
+              <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="space-y-5">
+                <div>
+                  <h3 className="text-xs font-mono font-bold uppercase tracking-wider text-blue-300 mb-1">
+                    Stark Hologram & Cyberpunk Camera Gesture Control
+                  </h3>
+                  <p className="text-xs text-slate-400 mb-4">
+                    Control screen brightness, master volume, or manipulate the 3D Living AI Core directly in air using camera hand gestures.
+                  </p>
+
+                  <div className="glass-panel p-4 rounded-2xl border border-slate-800 space-y-4">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <div className="text-xs font-mono font-bold text-slate-200">Operating Mode</div>
+                        <div className="text-[11px] text-slate-400">Choose dual operating mode for MediaPipe tracking</div>
+                      </div>
+                      <div className="flex items-center rounded-xl border border-slate-700 bg-slate-900 p-1 gap-1">
+                        <button
+                          onClick={() => fetch(`${API_BASE}/api/gesture/mode`, { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ mode: 'system' })})}
+                          className="px-3 py-1.5 rounded-lg text-xs font-mono font-bold transition-all cursor-pointer bg-blue-600 text-white"
+                        >
+                          💻 System Control
+                        </button>
+                        <button
+                          onClick={() => fetch(`${API_BASE}/api/gesture/mode`, { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ mode: 'avatar' })})}
+                          className="px-3 py-1.5 rounded-lg text-xs font-mono font-bold transition-all cursor-pointer bg-cyan-600 text-white"
+                        >
+                          🎭 3D Model Control
+                        </button>
+                      </div>
+                    </div>
+
+                    <div className="pt-3 border-t border-slate-800 flex items-center justify-between">
+                      <div>
+                        <div className="text-xs font-mono font-bold text-slate-200">Camera Gesture Controller Thread</div>
+                        <div className="text-[11px] text-slate-400">Runs OpenCV + MediaPipe Tasks thread in backend</div>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <button
+                          onClick={() => fetch(`${API_BASE}/api/gesture/start`, { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ show_preview: false, camera_id: 0, mode: 'system' })})}
+                          className="px-4 py-2 rounded-xl bg-blue-600/30 text-blue-300 border border-blue-500/40 hover:bg-blue-600/50 text-xs font-mono font-bold transition-all cursor-pointer"
+                        >
+                          Start Camera
+                        </button>
+                        <button
+                          onClick={() => fetch(`${API_BASE}/api/gesture/stop`, { method: 'POST' })}
+                          className="px-4 py-2 rounded-xl bg-red-500/20 text-red-400 border border-red-500/40 hover:bg-red-500/30 text-xs font-mono font-bold transition-all cursor-pointer"
+                        >
+                          Stop Camera
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </motion.div>
+            )}
             {activeTab === 'integrations' && (
               <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="space-y-4">
                 <h3 className="text-xs font-mono font-bold uppercase tracking-wider text-blue-300 mb-1">

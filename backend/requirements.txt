@@ -12,13 +12,14 @@ silero-vad
 webrtcvad-wheels
 chromadb
 sentence-transformers
-pypdf
-python-multipart
-playwright
-pytest
-pytest-cov
-pytest-asyncio
-httpx
-pywinauto; sys_platform == 'win32'
-atomacos; sys_platform == 'darwin'
+# ── Multi-Format Document Ingestion & OCR ──
+pypdf                    # PDF text extraction
+pdfplumber               # Advanced PDF text & table extraction
+python-docx              # Word (.docx) document parsing
+pandas                   # CSV & Excel structured data analytics
+openpyxl                 # Excel (.xlsx) workbook reader
+pillow                   # Image manipulation for OCR
+pytesseract              # Python wrapper for Tesseract OCR (requires Tesseract OCR system binary)
+pdf2image                # PDF page to image renderer (requires Poppler system binary)
+
 

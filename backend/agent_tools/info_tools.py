@@ -3,9 +3,10 @@ info_tools.py — Live Real-Time Information, News, Date/Time & Web Search for K
 
 Provides Jarvis-style live world intelligence:
 1. `get_current_datetime` — User's local date, day of week, time & timezone.
-2. `get_news` — Live news for broad topics (tech, business, world) and Indian city/state queries
+2. `get_weather` — Live current weather for any city/location via Open-Meteo (free, no API key).
+3. `get_news` — Live news for broad topics (tech, business, world) and Indian city/state queries
    (Muzaffarnagar, Uttar Pradesh, Delhi) via Google News RSS & Tavily/Serper fallback with TTL caching.
-3. `answer_general_question` — Web-search-backed question answering for live events, weather, facts.
+4. `answer_general_question` — Web-search-backed question answering for live events, weather, facts.
 """
 
 import os
@@ -29,9 +30,11 @@ KAIROS_TIMEZONE = os.environ.get("KAIROS_TIMEZONE", "").strip()
 # In-memory TTL caches: {query_key: (timestamp, result_dict)}
 _NEWS_CACHE: Dict[str, Tuple[float, Dict[str, Any]]] = {}
 _SEARCH_CACHE: Dict[str, Tuple[float, Dict[str, Any]]] = {}
+_WEATHER_CACHE: Dict[str, Tuple[float, Dict[str, Any]]] = {}
 
-NEWS_CACHE_TTL = 300   # 5 minutes in seconds
+NEWS_CACHE_TTL = 300    # 5 minutes in seconds
 SEARCH_CACHE_TTL = 600  # 10 minutes in seconds
+WEATHER_CACHE_TTL = 600 # 10 minutes in seconds
 
 
 def _clean_text(text: str) -> str:
@@ -90,7 +93,149 @@ def get_current_datetime(timezone_override: str = "") -> Dict[str, Any]:
     }
 
 
-# ── 2. Live News (Hyperlocal Indian & Global Topics) ───────────────────────────
+# ── 2. Live Weather (Open-Meteo, free, no API key) ────────────────────────────
+
+# WMO Weather Interpretation Codes → human-readable description
+_WMO_CODES: Dict[int, str] = {
+    0: "Clear sky", 1: "Mainly clear", 2: "Partly cloudy", 3: "Overcast",
+    45: "Foggy", 48: "Rime fog",
+    51: "Light drizzle", 53: "Moderate drizzle", 55: "Dense drizzle",
+    61: "Slight rain", 63: "Moderate rain", 65: "Heavy rain",
+    71: "Slight snow", 73: "Moderate snow", 75: "Heavy snow", 77: "Snow grains",
+    80: "Slight rain showers", 81: "Moderate rain showers", 82: "Violent rain showers",
+    85: "Slight snow showers", 86: "Heavy snow showers",
+    95: "Thunderstorm", 96: "Thunderstorm with hail", 99: "Thunderstorm with heavy hail",
+}
+
+
+def get_weather(city: str, country: str = "") -> Dict[str, Any]:
+    """
+    Returns current weather for any city using Open-Meteo API (free, no API key required).
+
+    Steps:
+    1. Geocode the city name to (lat, lon) using Open-Meteo's geocoding endpoint.
+    2. Fetch current weather (temperature, apparent temperature, wind speed, humidity,
+       precipitation, and WMO weather code) from Open-Meteo's forecast endpoint.
+    3. Return structured result with a human-readable spoken_message.
+
+    Args:
+        city: City name (e.g. "Mumbai", "London", "New York").
+        country: Optional country name or ISO code to disambiguate (e.g. "India", "US").
+
+    Returns:
+        Dict with keys: success, city, country, temperature_c, feels_like_c, humidity_pct,
+        wind_speed_kmh, precipitation_mm, weather_description, spoken_message, message.
+    """
+    cache_key = f"{city.lower().strip()}|{country.lower().strip()}"
+    now_ts = time.time()
+    if cache_key in _WEATHER_CACHE:
+        ts, cached = _WEATHER_CACHE[cache_key]
+        if now_ts - ts < WEATHER_CACHE_TTL:
+            return cached
+
+    city_clean = city.strip()
+    if not city_clean:
+        return {"success": False, "message": "Please provide a city name."}
+
+    # ── Step 1: Geocode ───────────────────────────────────────────────────────
+    try:
+        geo_query = urllib.parse.urlencode({
+            "name": city_clean,
+            "count": 5,
+            "language": "en",
+            "format": "json",
+        })
+        geo_url = f"https://geocoding-api.open-meteo.com/v1/search?{geo_query}"
+        geo_req = urllib.request.Request(
+            geo_url,
+            headers={"User-Agent": "Kairos-AI/1.0 (contact@kairos.local)"}
+        )
+        with urllib.request.urlopen(geo_req, timeout=6) as resp:
+            geo_data = json.loads(resp.read().decode("utf-8"))
+    except Exception as e:
+        return {"success": False, "message": f"Could not reach geocoding service: {e}"}
+
+    results = geo_data.get("results") or []
+    if not results:
+        return {
+            "success": False,
+            "message": f"Could not find a location named '{city_clean}'. Please check the city name.",
+        }
+
+    # Pick the best match: prefer country match if provided
+    match = results[0]
+    if country:
+        country_lo = country.lower()
+        for r in results:
+            if country_lo in (r.get("country", "") + " " + r.get("country_code", "")).lower():
+                match = r
+                break
+
+    lat = match.get("latitude")
+    lon = match.get("longitude")
+    resolved_city = match.get("name", city_clean)
+    resolved_country = match.get("country", "")
+
+    # ── Step 2: Fetch weather ─────────────────────────────────────────────────
+    try:
+        wx_params = urllib.parse.urlencode({
+            "latitude": lat,
+            "longitude": lon,
+            "current": "temperature_2m,apparent_temperature,relative_humidity_2m,precipitation,wind_speed_10m,weathercode",
+            "wind_speed_unit": "kmh",
+            "timezone": "auto",
+        })
+        wx_url = f"https://api.open-meteo.com/v1/forecast?{wx_params}"
+        wx_req = urllib.request.Request(
+            wx_url,
+            headers={"User-Agent": "Kairos-AI/1.0 (contact@kairos.local)"}
+        )
+        with urllib.request.urlopen(wx_req, timeout=8) as resp:
+            wx_data = json.loads(resp.read().decode("utf-8"))
+    except Exception as e:
+        return {"success": False, "message": f"Could not fetch weather data: {e}"}
+
+    curr = wx_data.get("current", {})
+    temp_c = curr.get("temperature_2m")
+    feels_c = curr.get("apparent_temperature")
+    humidity = curr.get("relative_humidity_2m")
+    wind_kmh = curr.get("wind_speed_10m")
+    precip_mm = curr.get("precipitation", 0.0)
+    wmo_code = curr.get("weathercode", 0)
+    description = _WMO_CODES.get(wmo_code, f"Weather code {wmo_code}")
+
+    # Build spoken message
+    location_str = f"{resolved_city}, {resolved_country}" if resolved_country else resolved_city
+    spoken = (
+        f"The weather in {location_str} right now is {description.lower()}. "
+        f"Temperature is {temp_c}°C, feels like {feels_c}°C. "
+        f"Humidity {humidity}%, wind speed {wind_kmh} km/h."
+    )
+    if precip_mm and precip_mm > 0:
+        spoken += f" Precipitation: {precip_mm} mm."
+
+    result = {
+        "success": True,
+        "city": resolved_city,
+        "country": resolved_country,
+        "latitude": lat,
+        "longitude": lon,
+        "temperature_c": temp_c,
+        "feels_like_c": feels_c,
+        "humidity_pct": humidity,
+        "wind_speed_kmh": wind_kmh,
+        "precipitation_mm": precip_mm,
+        "weather_code": wmo_code,
+        "weather_description": description,
+        "spoken_message": spoken,
+        "message": spoken,
+    }
+    _WEATHER_CACHE[cache_key] = (now_ts, result)
+    return result
+
+
+# ── 3. Live News (Hyperlocal Indian & Global Topics) ───────────────────────────
+
 
 def _fetch_google_news_rss(query: str, max_results: int = 5) -> List[Dict[str, str]]:
     """
@@ -382,3 +527,91 @@ def answer_general_question(query: str) -> Dict[str, Any]:
 
     _SEARCH_CACHE[cache_key] = (now_ts, result)
     return result
+
+
+# ── 4. Spreadsheet Query & Analytics Tool ─────────────────────────────────────
+
+def query_spreadsheet(doc_name: str = "", query: str = "") -> Dict[str, Any]:
+    """
+    Executes pandas numeric computations (sum, mean, min, max, count, stats)
+    directly on ingested CSV and Excel spreadsheets.
+    """
+    try:
+        from documents.ingestion import STORED_SPREADSHEETS
+    except ImportError:
+        STORED_SPREADSHEETS = {}
+
+    if not STORED_SPREADSHEETS:
+        return {
+            "success": False,
+            "message": "No spreadsheets (.csv / .xlsx) have been ingested yet in this session.",
+            "spoken_message": "No spreadsheets have been ingested yet."
+        }
+
+    target_name = None
+    target_dfs = None
+    clean_target = doc_name.strip().lower()
+
+    if clean_target:
+        for name, dfs in STORED_SPREADSHEETS.items():
+            if clean_target in name.lower():
+                target_name = name
+                target_dfs = dfs
+                break
+
+    if not target_dfs:
+        target_name, target_dfs = list(STORED_SPREADSHEETS.items())[-1]
+
+    df = list(target_dfs.values())[0] if target_dfs else None
+    if df is None or df.empty:
+        return {"success": False, "message": f"Spreadsheet '{target_name}' is empty."}
+
+    clean_q = query.lower().strip()
+    all_cols = list(df.columns)
+    num_cols = list(df.select_dtypes(include=["number"]).columns)
+
+    target_col = None
+    for c in all_cols:
+        if str(c).lower() in clean_q:
+            target_col = c
+            break
+
+    if not target_col and num_cols:
+        target_col = num_cols[0]
+
+    result_text = ""
+    if target_col and target_col in df.columns:
+        col_series = df[target_col]
+        try:
+            if "sum" in clean_q or "total" in clean_q:
+                val = col_series.sum()
+                result_text = f"The total sum of column '{target_col}' in spreadsheet '{target_name}' is {val:,.2f}."
+            elif "average" in clean_q or "mean" in clean_q or "avg" in clean_q:
+                val = col_series.mean()
+                result_text = f"The average value of column '{target_col}' in spreadsheet '{target_name}' is {val:,.2f}."
+            elif "max" in clean_q or "highest" in clean_q or "maximum" in clean_q:
+                val = col_series.max()
+                result_text = f"The maximum value in column '{target_col}' in spreadsheet '{target_name}' is {val:,.2f}."
+            elif "min" in clean_q or "lowest" in clean_q or "minimum" in clean_q:
+                val = col_series.min()
+                result_text = f"The minimum value in column '{target_col}' in spreadsheet '{target_name}' is {val:,.2f}."
+            elif "count" in clean_q or "how many" in clean_q:
+                val = len(df)
+                result_text = f"Spreadsheet '{target_name}' contains {val} total rows."
+        except Exception:
+            pass
+
+    if not result_text:
+        row_count = len(df)
+        cols_str = ", ".join([str(c) for c in all_cols])
+        result_text = f"Spreadsheet '{target_name}' has {row_count} rows and columns: {cols_str}."
+
+    return {
+        "success": True,
+        "spreadsheet": target_name,
+        "query": query,
+        "answer": result_text,
+        "spoken_message": result_text,
+        "message": result_text
+    }
+

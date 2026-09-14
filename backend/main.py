@@ -17,12 +17,13 @@ from tts_agent import generate_audio_async
 import db
 import memory_store
 import document_pipeline
-from agent_tools.executor import execute_tool, extract_action, strip_action_tag
+from agent_tools.executor import execute_tool, extract_action, strip_action_tag, ActionTagStreamFilter
 from config import platform_paths
 import platform
+import traceback
 import agent_loop as _agent_loop
-from agent_loop import classify_complexity, run_agentic_loop, ConfirmationRequired, AgentLoopResult
-from agents.orchestrator import orchestrate
+from agent_loop import ConfirmationRequired
+import agents.orchestrator as _orchestrator_mod
 
 
 from dotenv import load_dotenv
@@ -43,6 +44,7 @@ from fastapi.middleware.cors import CORSMiddleware
 SESSION_LANGUAGES = {}
 SESSION_USER_IDS = {}  # session_id -> nanban_user_id (browser-local anonymous ID)
 SESSION_SELECTED_DOCS = {}  # session_id / user_id -> list of selected doc_ids (or None for all)
+SESSION_MODES = {}  # session_id -> "gf" | "assistant"  (default: "gf")
 # Stores paused agentic-loop state when a mid-plan step needs user confirmation.
 # Key: action_id  Value: {"session_id", "pending_steps", "records", "user_message", "history", "lang", "ws_emit_fn", "execute_fn"}
 SESSION_PLAN_STATE: dict = {}
@@ -61,6 +63,15 @@ def startup_platform_check():
             print(f"[Kairos] ⚠️  WARNING: {info['name']} was not found automatically on this {platform_paths.SYSTEM} system.")
             print(f"          ➜ Solution: {info['help']}")
     print()
+
+    # ── Auto-start camera gesture control ────────────────────────────────
+    try:
+        from agent_tools.gesture_control import get_gesture_controller
+        gc = get_gesture_controller()
+        result = gc.start(show_preview=False, camera_id=0)
+        print(f"[Gesture] ✅ Camera gesture control started automatically.")
+    except Exception as e:
+        print(f"[Gesture] ⚠️  Could not auto-start camera gesture control: {e}")
 
 def _normalize_cors_origin(origin):
     origin = origin.strip()
@@ -100,6 +111,12 @@ db.init_db()
 @app.get("/api/sessions")
 def get_sessions(user_id: str = ""):
     return db.get_all_sessions(user_id=user_id if user_id else None)
+
+@app.get("/api/system/readiness")
+def get_system_readiness():
+    """Returns local offline readiness status, connectivity state, model presence, and resource usage."""
+    from core import connectivity
+    return connectivity.get_readiness()
 
 @app.get("/api/history/{session_id}")
 def get_history(session_id: str):
@@ -224,6 +241,62 @@ def get_model_configuration():
     return get_active_model_metadata()
 
 
+# ── Camera Hand Gesture Control API ──────────────────────────────────────────
+from pydantic import BaseModel
+from agent_tools.gesture_control import get_gesture_controller
+
+class GestureStartRequest(BaseModel):
+    show_preview: bool = False
+    camera_id: int = 0
+    mode: str = "system"
+
+class GestureModeRequest(BaseModel):
+    mode: str
+
+@app.post("/api/gesture/start")
+def start_camera_gesture(req: GestureStartRequest = GestureStartRequest()):
+    gc = get_gesture_controller()
+    return gc.start(show_preview=req.show_preview, camera_id=req.camera_id, mode=req.mode)
+
+@app.post("/api/gesture/stop")
+def stop_camera_gesture():
+    gc = get_gesture_controller()
+    return gc.stop()
+
+@app.post("/api/gesture/mode")
+def set_camera_gesture_mode_api(req: GestureModeRequest):
+    gc = get_gesture_controller()
+    return gc.set_mode(req.mode)
+
+@app.get("/api/gesture/status")
+def get_camera_gesture_status_api():
+    gc = get_gesture_controller()
+    return {"success": True, "status": gc.get_status()}
+
+from fastapi.responses import StreamingResponse
+import asyncio as _asyncio
+
+async def _mjpeg_generator():
+    gc = get_gesture_controller()
+    while gc._running:
+        with gc._frame_lock:
+            frame = gc.latest_frame
+        if frame:
+            yield (
+                b"--frame\r\n"
+                b"Content-Type: image/jpeg\r\n\r\n" + frame + b"\r\n"
+            )
+        await _asyncio.sleep(0.04)   # ~25 fps
+
+@app.get("/api/gesture/stream")
+def gesture_mjpeg_stream():
+    """MJPEG stream of the camera feed with gesture HUD overlay."""
+    return StreamingResponse(
+        _mjpeg_generator(),
+        media_type="multipart/x-mixed-replace; boundary=frame"
+    )
+
+
 # ── Memory / RAG API Endpoints ──────────────────────────────────────────────
 from fastapi import UploadFile, File
 from fastapi.responses import JSONResponse
@@ -272,12 +345,20 @@ async def set_user_doc_selection(user_id: str, request: Request):
     SESSION_SELECTED_DOCS[user_id] = doc_ids
     return {"status": "ok", "selected_doc_ids": doc_ids}
 
+ALLOWED_INGEST_EXTENSIONS = (
+    ".pdf", ".docx", ".doc", ".csv", ".xlsx", ".xls",
+    ".jpg", ".jpeg", ".png", ".bmp", ".txt", ".md"
+)
+
 @app.post("/api/memory/ingest")
 async def ingest_document(user_id: str, file: UploadFile = File(...)):
-    """Upload and ingest a PDF, TXT, or MD file into long-term memory."""
+    """Upload and ingest PDF, Word, CSV, Excel, Image, or text files into long-term memory."""
     ext = pathlib.Path(file.filename).suffix.lower()
-    if ext not in (".pdf", ".txt", ".md"):
-        raise HTTPException(status_code=400, detail="Only .pdf, .txt, and .md files are supported")
+    if ext not in ALLOWED_INGEST_EXTENSIONS:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Unsupported file format '{ext}'. Supported: .pdf, .docx, .csv, .xlsx, .jpg, .png, .txt, .md"
+        )
 
     # Save to a temp file
     with tempfile.NamedTemporaryFile(delete=False, suffix=ext) as tmp:
@@ -347,11 +428,12 @@ def clean_for_tts(text: str) -> str:
     # 1. Strip complete [ACTION:{...}] tags
     text = strip_action_tag(text)
     # 2. Strip any INCOMPLETE / partially-streamed [ACTION: ... that didn't close yet
-    #    e.g. '[ACTION:{"tool":"work_mode"...' without closing ']'
     text = re.sub(r'\[ACTION:\{.*', '', text, flags=re.DOTALL)
-    # 3. Strip any leftover JSON-looking fragments that contain "tool" / "params"
-    #    e.g. 'tool":"work_mode","params":{},"summary":"..."}]'
-    text = re.sub(r'tool\s*["\']?\s*:\s*["\']?[^,\]]*["\']?.*', '', text, flags=re.DOTALL)
+    # 3. Strip raw JSON key-value fragments (tool, params, summary, action_id, etc.)
+    text = re.sub(r'(?:tool|params|summary|filename|code|action_id)\s*["\']?\s*:\s*.*', '', text, flags=re.DOTALL)
+    # 4. If sentence contains JSON keys, brackets or summary remnants, return empty string
+    if ('"summary":' in text) or ('"params":' in text) or ('"tool":' in text) or text.strip().endswith('"}]') or re.match(r'^\s*[,{\}\]"\s]+\s*$', text):
+        return ""
     text = ALL_GESTURE_RE.sub("", text)
     # Strip markdown code blocks so TTS doesn't speak code syntax aloud
     text = re.sub(r'```[\s\S]*?```', ' ', text)
@@ -449,6 +531,24 @@ async def audio_stream(websocket: WebSocket, session_id: str = "default_session"
 
         active_selected_docs = SESSION_SELECTED_DOCS.get(session_id, None) or SESSION_SELECTED_DOCS.get(effective_user_id, None)
 
+        # ── Mode Switch Detection (GF ↔ Assistant) ───────────────────────────
+        import re as _re_mode
+        _gf_trigger    = _re_mode.compile(r'\b(gf\s*mode\s*(on|activate|shuru)|MODE:GF)\b', _re_mode.IGNORECASE)
+        _asst_trigger  = _re_mode.compile(r'\b(assistant\s*mode\s*(on|activate|shuru)|MODE:ASSISTANT)\b', _re_mode.IGNORECASE)
+
+        current_mode = SESSION_MODES.get(session_id, "gf")
+
+        if _asst_trigger.search(u_text):
+            current_mode = "assistant"
+            SESSION_MODES[session_id] = "assistant"
+            print(f"[MODE] Session {session_id} → Assistant Mode")
+            await safe_send_json({"type": "mode_changed", "mode": "assistant"})
+        elif _gf_trigger.search(u_text):
+            current_mode = "gf"
+            SESSION_MODES[session_id] = "gf"
+            print(f"[MODE] Session {session_id} → GF Mode")
+            await safe_send_json({"type": "mode_changed", "mode": "gf"})
+
         from llm_agent import groq_client, GROQ_MODEL, get_chat_history
 
         history_snap = get_chat_history(memory_id, "avatar.vrm") if not skip_memory else []
@@ -465,7 +565,16 @@ async def audio_stream(websocket: WebSocket, session_id: str = "default_session"
 
         def producer():
             try:
-                orch_res = orchestrate(
+                # ── Golden Rule Check: Offline & local model missing ─────────
+                from core import connectivity
+                if connectivity.current_state().value == "OFFLINE":
+                    readiness = connectivity.get_readiness()
+                    if not readiness.get("all_local_models_ready", False):
+                        msg = connectivity.GOLDEN_RULE_FALLBACK_MESSAGE
+                        asyncio.run_coroutine_threadsafe(q.put(msg), loop)
+                        return
+
+                orch_res = _orchestrator_mod.orchestrate(
                     session_id=memory_id,
                     user_message=u_text,
                     history=history_snap,
@@ -477,6 +586,7 @@ async def audio_stream(websocket: WebSocket, session_id: str = "default_session"
                     skip_memory=skip_memory,
                     on_rag_callback=on_rag_results_found,
                     selected_doc_ids=active_selected_docs,
+                    mode=current_mode,
                 )
                 if orch_res.get("mode") == "loop":
                     asyncio.run_coroutine_threadsafe(q.put(orch_res.get("narration", "")), loop)
@@ -491,14 +601,29 @@ async def audio_stream(websocket: WebSocket, session_id: str = "default_session"
                     "user_message": u_text,
                     "history": history_snap,
                     "emit_fn": emit_sync,
-                    "records": cr.records,
+                    "records": getattr(cr, "records", []),
                 }
                 print(f"[LOOP] paused — confirmation required: action_id={cr.action_id}")
+                emit_sync("AWAITING_CONFIRMATION", {
+                    "action_id": cr.action_id,
+                    "pending_steps": getattr(cr, "pending_steps", []),
+                    "records": getattr(cr, "records", []),
+                    "message": "Action requires your approval before proceeding.",
+                })
+                confirm_msg = "Sir, this action requires your approval. Please review the plan in the dashboard."
+                asyncio.run_coroutine_threadsafe(q.put(confirm_msg), loop)
             except Exception as prod_err:
-                print(f"[PRODUCER ERROR] {prod_err}")
-                asyncio.run_coroutine_threadsafe(
-                    q.put(f"[Error: Orchestrator processing failed: {prod_err}]"), loop
-                )
+                print(f"[PRODUCER EXCEPTION CATCH-ALL] {prod_err}")
+                traceback.print_exc()
+                err_str = str(prod_err).lower()
+                from core import connectivity
+                if "connection" in err_str or "unreachable" in err_str or "refused" in err_str or "provider" in err_str or connectivity.current_state().value == "OFFLINE":
+                    fallback_text = connectivity.GOLDEN_RULE_FALLBACK_MESSAGE
+                else:
+                    fallback_text = "Something went wrong while processing that, sir."
+
+                emit_sync("SYSTEM_ERROR", {"error": str(prod_err), "fallback_text": fallback_text})
+                asyncio.run_coroutine_threadsafe(q.put(fallback_text), loop)
             finally:
                 asyncio.run_coroutine_threadsafe(q.put(None), loop)
 
@@ -507,6 +632,7 @@ async def audio_stream(websocket: WebSocket, session_id: str = "default_session"
 
         sentence_buffer = ""
         full_response_acc = ""
+        stream_filter = ActionTagStreamFilter()
         emotion_label = "neutral"           # resolved once, used for all TTS chunks
         emotion_resolved = False            # flag to extract only once
         first_sentence_sent = False
@@ -544,13 +670,14 @@ async def audio_stream(websocket: WebSocket, session_id: str = "default_session"
                             reasoning_done = True
                             in_reasoning_block = False
                             full_response_acc = full_response_acc[fa_match.end():]
-                            sentence_buffer = full_response_acc
+                            sentence_buffer = stream_filter.filter_chunk(full_response_acc)
                         continue
                     reasoning_done = True
-                    sentence_buffer = full_response_acc
+                    sentence_buffer = stream_filter.filter_chunk(full_response_acc)
                 else:
                     full_response_acc += chunk
-                    sentence_buffer += chunk
+                    clean_chunk = stream_filter.filter_chunk(chunk)
+                    sentence_buffer += clean_chunk
 
                 # ── Emotion tag extraction (once, as soon as [EMOTION:...] is in buffer) ──
                 if not emotion_resolved and "[EMOTION:" in full_response_acc:
@@ -559,9 +686,9 @@ async def audio_stream(websocket: WebSocket, session_id: str = "default_session"
                     if "]" in full_response_acc.split("[EMOTION:", 1)[1].split("\n")[0]:
                         emotion_label = _emo_label
                         emotion_resolved = True
-                        # Strip [EMOTION:...] tag from both accumulators so it never reaches TTS/chat
+                        # Strip [EMOTION:...] tag from accumulators
                         full_response_acc = _after
-                        sentence_buffer = _after
+                        sentence_buffer = strip_action_tag(_after)
                         # Emit emotion event to frontend for neural core visual overlay
                         await safe_send_json({
                             "type": "emotion_update",
@@ -577,9 +704,6 @@ async def audio_stream(websocket: WebSocket, session_id: str = "default_session"
                         "event": "AI_GENERATION_STARTED",
                         "timestamp": time.time(),
                     })
-
-                # Strip [ACTION:{...}] and tags from sentence buffer
-                sentence_buffer = strip_action_tag(sentence_buffer)
 
                 match = sentence_end_re.search(sentence_buffer)
                 if match:
@@ -606,13 +730,17 @@ async def audio_stream(websocket: WebSocket, session_id: str = "default_session"
                         # Clean sentence for TTS — pass resolved emotion label
                         tts_sentence = clean_for_tts(sentence)
                         # Safety guard: skip if ACTION tag content still leaks through
-                        if tts_sentence and 'tool' not in tts_sentence and '[ACTION' not in tts_sentence:
-                            print(f"[TTS CHUNK Male] emotion={emotion_label} | {tts_sentence}")
-                            audio_bytes, _ = await generate_audio_async(tts_sentence, "en", emotion_label)
+                        if tts_sentence and 'tool' not in tts_sentence and '[ACTION' not in tts_sentence and 'summary\"' not in tts_sentence and 'params\"' not in tts_sentence:
+                            print(f"[TTS CHUNK Arya] lang={lang} emotion={emotion_label} | {tts_sentence}")
+                            audio_bytes, _ = await generate_audio_async(tts_sentence, lang, emotion_label)
                             if audio_bytes:
                                 await safe_send_bytes(audio_bytes)
 
             # Process remaining buffer
+            flushed = stream_filter.flush()
+            if flushed:
+                sentence_buffer += flushed
+
             if sentence_buffer.strip():
                 sentence = sentence_buffer.strip()
 
@@ -627,11 +755,12 @@ async def audio_stream(websocket: WebSocket, session_id: str = "default_session"
 
                 tts_sentence = clean_for_tts(sentence)
                 # Safety guard: skip if ACTION tag content still leaks through
-                if tts_sentence and 'tool' not in tts_sentence and '[ACTION' not in tts_sentence:
-                    print(f"[TTS CHUNK Male] emotion={emotion_label} | {tts_sentence}")
-                    audio_bytes, _ = await generate_audio_async(tts_sentence, "en", emotion_label)
+                if tts_sentence and 'tool' not in tts_sentence and '[ACTION' not in tts_sentence and 'summary"' not in tts_sentence and 'params"' not in tts_sentence:
+                    print(f"[TTS CHUNK Arya] emotion={emotion_label} lang={lang} | {tts_sentence}")
+                    audio_bytes, _ = await generate_audio_async(tts_sentence, lang, emotion_label)
                     if audio_bytes:
                         await safe_send_bytes(audio_bytes)
+
 
             # ── Execute [ACTION:{...}] tool if present ─────────────────
             action_data = extract_action(full_response_acc)
@@ -707,9 +836,10 @@ async def audio_stream(websocket: WebSocket, session_id: str = "default_session"
                         failure_tts = clean_for_tts(res_msg)
                         if failure_tts:
                             print(f"[TTS CHUNK Failure Feedback] {failure_tts}")
-                            audio_bytes, _ = await generate_audio_async(failure_tts, "en", "concerned")
+                            audio_bytes, _ = await generate_audio_async(failure_tts, lang, "concerned")
                             if audio_bytes:
                                 await safe_send_bytes(audio_bytes)
+
 
             # Final transcription message with clean text
             if full_response_acc:
@@ -726,6 +856,19 @@ async def audio_stream(websocket: WebSocket, session_id: str = "default_session"
                     "emotion": emotion_label or "neutral",
                     "language": lang,
                 })
+
+                # ── Persist Conversation History Turn (SQLite & Redis) ──────────
+                if u_text and not skip_memory:
+                    try:
+                        from llm_agent import save_chat_history
+                        db.save_turn(memory_id, "avatar.vrm", "user", u_text)
+                        db.save_turn(memory_id, "avatar.vrm", "assistant", clean_full_text, emotion=emotion_label or "neutral")
+                        history_snap.append({"role": "user", "content": u_text})
+                        history_snap.append({"role": "assistant", "content": clean_full_text})
+                        save_chat_history(memory_id, "avatar.vrm", history_snap)
+                        print(f"[Memory] Persistent turn saved for session {memory_id} (total turns: {len(history_snap)})")
+                    except Exception as _save_err:
+                        print(f"[Memory WARNING] Failed to persist session turn: {_save_err}")
 
             await safe_send_json({
                 "type": "neural_event",
@@ -788,7 +931,7 @@ async def audio_stream(websocket: WebSocket, session_id: str = "default_session"
                 is_audio_input = True
                 data = message["bytes"]
                 t_whisp_start = time.time()
-                expected_lang = SESSION_LANGUAGES.get(session_id, "auto")
+                expected_lang = SESSION_LANGUAGES.get(session_id, "en")
                 result = await asyncio.to_thread(
                     transcriber.process_audio_chunk, data, expected_lang
                 )
@@ -797,6 +940,17 @@ async def audio_stream(websocket: WebSocket, session_id: str = "default_session"
                     continue
                 user_text     = result["text"]
                 detected_lang = result["language"]
+                # ── Hinglish detection: if Devanagari chars mixed with Latin → hinglish
+                import unicodedata as _ud
+                _has_deva = any(_ud.name(c, "").startswith("DEVANAGARI") for c in user_text if c.isalpha())
+                _has_latin = any("LATIN" in _ud.name(c, "") for c in user_text if c.isalpha())
+                if _has_deva and _has_latin:
+                    detected_lang = "hinglish"
+                elif detected_lang not in ("hi", "en", "hinglish"):
+                    # If Whisper detected something unexpected for short clips, trust hi as session default
+                    session_default = SESSION_LANGUAGES.get(session_id, "en")
+                    if session_default == "hi" and len(user_text.split()) < 8:
+                        detected_lang = "hi"
                 print(f"\n[STEP 2] Whisper [{detected_lang}]: '{user_text}' (took {whisper_duration:.2f}s)")
             elif "text" in message:
                 import json
@@ -804,7 +958,7 @@ async def audio_stream(websocket: WebSocket, session_id: str = "default_session"
                     payload = json.loads(message["text"])
                     if payload.get("type") == "text_input":
                         user_text = payload.get("text")
-                        detected_lang = payload.get("language", "en")
+                        detected_lang = payload.get("language", SESSION_LANGUAGES.get(session_id, "en"))
                         if "user_id" in payload:
                             SESSION_USER_IDS[session_id] = payload["user_id"]
                             effective_user_id = payload["user_id"]
@@ -832,13 +986,20 @@ async def audio_stream(websocket: WebSocket, session_id: str = "default_session"
                             SESSION_LANGUAGES[session_id] = lang
                             print(f"\n[CONFIG] Language changed to: {lang}")
 
+                        if "mode" in payload:
+                            new_mode = payload.get("mode", "gf").lower()
+                            if new_mode in ("gf", "assistant"):
+                                SESSION_MODES[session_id] = new_mode
+                                print(f"[MODE] Config update → {new_mode} mode for session {session_id}")
+                                await safe_send_json({"type": "mode_changed", "mode": new_mode})
+
                         if "vad_sensitivity" in payload:
                             sens = payload.get("vad_sensitivity")
                             transcriber.set_sensitivity(sens)
                         continue
                     elif payload.get("type") == "intro_trigger":
                         user_text = payload.get("text")
-                        detected_lang = payload.get("language", "en")
+                        detected_lang = payload.get("language", SESSION_LANGUAGES.get(session_id, "en"))
                         if "user_id" in payload:
                             SESSION_USER_IDS[session_id] = payload["user_id"]
                             effective_user_id = payload["user_id"]
@@ -848,7 +1009,7 @@ async def audio_stream(websocket: WebSocket, session_id: str = "default_session"
                         
                         if len(history) > 0:
                             is_intro_trigger = True
-                            user_text = "(Greet me as a returning user, casually.)"
+                            user_text = "(Greet me as a returning user, casually in Hindi/Hinglish.)"
                             print(f"\n[INTRO TRIGGER] Skipped full intro for avatar.vrm, doing short welcome back.")
                         else:
                             is_intro_trigger = True

@@ -16,7 +16,8 @@ import { NeuralController } from './NeuralController';
 import { neuralStateMachine, AI_STATES } from './neuralStateMachine';
 import { PRESET_MODELS, calculateModelParameters, mapParametersToVisualSpecs } from './parameterCalculator';
 import ModelInfoHUD from './ModelInfoHUD';
-import { Eye, Focus, Globe, Compass, ZoomIn, ZoomOut, RotateCcw, Volume2 } from 'lucide-react';
+import ArchitectureInfoOverlay from './ArchitectureInfoOverlay';
+import { Eye, Focus, Globe, Compass, ZoomIn, ZoomOut, RotateCcw, Volume2, Info } from 'lucide-react';
 
 const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:8000';
 
@@ -24,6 +25,7 @@ export default function LivingAICoreCanvas({
   audioPlayEvent,
   userId = 'default_user',
   qualityTier = 'high',
+  gestureOverride = null,
 }) {
   const mountRef = useRef(null);
   const controllerRef = useRef(null);
@@ -32,6 +34,11 @@ export default function LivingAICoreCanvas({
   const cameraRef = useRef(null);
   const controlsRef = useRef(null);
   const reqIdRef = useRef(null);
+
+  const gestureOverrideRef = useRef(gestureOverride);
+  useEffect(() => {
+    gestureOverrideRef.current = gestureOverride;
+  }, [gestureOverride]);
 
   const [activeState, setActiveState] = useState(AI_STATES.IDLE);
   const [stateProfile, setStateProfile] = useState(neuralStateMachine.getProfile());
@@ -42,6 +49,7 @@ export default function LivingAICoreCanvas({
   const [docChunkCount, setDocChunkCount] = useState(4);
   const [activeCameraPreset, setActiveCameraPreset] = useState('overview');
   const [audioLevel, setAudioLevel] = useState(0);
+  const [showInspectOverlay, setShowInspectOverlay] = useState(false);
 
   // Audio Analyser ref
   const audioDataArrayRef = useRef(new Uint8Array(64));
@@ -266,6 +274,9 @@ export default function LivingAICoreCanvas({
       controls.update();
 
       if (controllerRef.current) {
+        if (gestureOverrideRef.current) {
+          controllerRef.current.applyGestureControl(gestureOverrideRef.current, dt);
+        }
         controllerRef.current.update(dt, totalTime);
       }
 
@@ -394,7 +405,34 @@ export default function LivingAICoreCanvas({
         >
           <RotateCcw size={13} />
         </button>
+
+        {/* Divider */}
+        <div className="w-[1px] h-4 bg-slate-700/50 mx-0.5" />
+
+        {/* 3D Holographic Architecture Infographics Toggle */}
+        <button
+          onClick={() => setShowInspectOverlay(!showInspectOverlay)}
+          title="Toggle 3D Holographic Component Infographics"
+          className={`p-2 rounded-xl text-xs font-mono transition-all cursor-pointer flex items-center gap-1.5 ${
+            showInspectOverlay
+              ? 'bg-cyan-600/40 text-cyan-200 border border-cyan-500/60 shadow-[0_0_15px_rgba(6,182,212,0.4)] animate-pulse'
+              : 'text-slate-400 hover:text-cyan-300 hover:bg-cyan-900/30'
+          }`}
+        >
+          <Info size={14} />
+          <span className="hidden md:inline font-bold">INFO OVERLAY</span>
+        </button>
       </div>
+
+      {/* 3D Holographic Component Infographics Overlay */}
+      <ArchitectureInfoOverlay
+        cameraRef={cameraRef}
+        controllerRef={controllerRef}
+        containerRef={mountRef}
+        show={showInspectOverlay}
+        factCount={factCount}
+        docChunkCount={docChunkCount}
+      />
 
       {/* ── Mouse Control Hint — bottom-left, pointer-events-none so it never blocks canvas ── */}
       <div className="absolute bottom-5 left-4 z-20 pointer-events-none">

@@ -27,6 +27,7 @@ from agent_tools import permissions
 from agent_tools import protected_zone
 from agent_tools import audit_logger
 from agent_tools import info_tools
+from agent_tools import file_tools
 from config import platform_paths
 
 # ── Dynamic Python interpreter path (cross-platform) ──────────────────────────
@@ -166,22 +167,68 @@ def execute_tool(tool_name: str, params: dict, confirmed_action_id: Optional[str
             target = safe_params.get("index_or_description") or safe_params.get("index") or safe_params.get("description", 1)
             return browser.switch_tab(target)
 
-        # ── Legacy YouTube Shortcuts ─────────────────────────────────────────
+        # ── YouTube Automation (Google Chrome Default Profile) ───────────────
         elif tool_name in ("open_youtube_in_brave", "search_and_play_youtube"):
-            query = safe_params.get("query", "")
+            query = safe_params.get("query") or safe_params.get("search_query") or safe_params.get("q", "")
             if query:
-                return browser.youtube_search(query)
+                s_res = browser.youtube_search(query)
+                if s_res.get("success"):
+                    time.sleep(0.5)
+                    return browser.youtube_play_video(1)
+                return s_res
             return browser.navigate_to("https://www.youtube.com")
 
         elif tool_name == "youtube_search":
-            query = safe_params.get("query", "")
-            return browser.youtube_search(query)
+            query = safe_params.get("query") or safe_params.get("search_query") or safe_params.get("q", "")
+            s_res = browser.youtube_search(query)
+            if query and s_res.get("success"):
+                time.sleep(0.5)
+                return browser.youtube_play_video(1)
+            return s_res
 
         elif tool_name == "youtube_play_video":
             return browser.youtube_play_video(int(safe_params.get("index", 1)))
 
         elif tool_name == "youtube_control":
             return browser.youtube_control(safe_params.get("action", "play_pause"))
+
+        elif tool_name == "youtube_like_video":
+            return browser.youtube_like_video()
+
+        elif tool_name == "youtube_subscribe":
+            return browser.youtube_subscribe()
+
+        elif tool_name == "open_github":
+            return browser.open_github(safe_params.get("path", ""))
+
+        elif tool_name == "open_instagram":
+            return browser.open_instagram(safe_params.get("path", ""))
+
+        elif tool_name == "instagram_action":
+            return browser.instagram_action(safe_params.get("action", ""), safe_params.get("target", ""))
+
+        # ── Camera Gesture Control ──────────────────────────────────────────
+        elif tool_name == "start_camera_gesture_control":
+            from agent_tools.gesture_control import get_gesture_controller
+            gc = get_gesture_controller()
+            show_preview = bool(safe_params.get("show_preview", False))
+            return gc.start(show_preview=show_preview)
+
+        elif tool_name == "stop_camera_gesture_control":
+            from agent_tools.gesture_control import get_gesture_controller
+            gc = get_gesture_controller()
+            return gc.stop()
+
+        elif tool_name == "get_camera_gesture_status":
+            from agent_tools.gesture_control import get_gesture_controller
+            gc = get_gesture_controller()
+            return {"success": True, "status": gc.get_status()}
+
+        elif tool_name == "set_camera_gesture_mode":
+            from agent_tools.gesture_control import get_gesture_controller
+            gc = get_gesture_controller()
+            mode = str(safe_params.get("mode", "system"))
+            return gc.set_mode(mode)
 
         # ── Desktop OS & Application Management ──────────────────────────────
         elif tool_name == "open_brave":
@@ -190,8 +237,9 @@ def execute_tool(tool_name: str, params: dict, confirmed_action_id: Optional[str
         elif tool_name == "open_vscode":
             return _open_vscode()
 
-        elif tool_name == "open_app":
-            return _open_app(safe_params.get("app_name", "brave"))
+        elif tool_name in ("open_app", "app_control"):
+            target_app = safe_params.get("app_name") or safe_params.get("app") or safe_params.get("name") or "brave"
+            return _open_app(target_app)
 
         elif tool_name == "close_app":
             return _close_app(safe_params.get("app_name", ""))
@@ -228,22 +276,58 @@ def execute_tool(tool_name: str, params: dict, confirmed_action_id: Optional[str
         elif tool_name == "work_mode":
             return _work_mode()
 
+        # ── File & Folder Management Tools ────────────────────────────────────
+        elif tool_name == "create_folder":
+            name = safe_params.get("folder_name") or safe_params.get("name") or safe_params.get("path") or safe_params.get("target_path") or ""
+            parent = safe_params.get("parent_dir") or safe_params.get("location") or safe_params.get("dir")
+            return file_tools.create_folder(folder_name=name, parent_dir=parent)
+
+        elif tool_name == "create_file":
+            fname = safe_params.get("filename") or safe_params.get("name") or safe_params.get("path") or safe_params.get("file") or ""
+            text_content = safe_params.get("content") or safe_params.get("text") or safe_params.get("code") or ""
+            parent = safe_params.get("parent_dir") or safe_params.get("location") or safe_params.get("dir")
+            return file_tools.create_file(filename=fname, content=text_content, parent_dir=parent)
+
+        elif tool_name == "rename_file_or_folder":
+            old_n = safe_params.get("old_name") or safe_params.get("old_path") or safe_params.get("original_name") or safe_params.get("from") or ""
+            new_n = safe_params.get("new_name") or safe_params.get("new_path") or safe_params.get("target_name") or safe_params.get("to") or ""
+            parent = safe_params.get("parent_dir") or safe_params.get("location") or safe_params.get("dir")
+            return file_tools.rename_file_or_folder(old_name=old_n, new_name=new_n, parent_dir=parent)
+
+        elif tool_name == "list_directory_contents":
+            dir_p = safe_params.get("path") or safe_params.get("dir") or safe_params.get("folder") or "desktop"
+            return file_tools.list_directory_contents(path=dir_p)
+
+        elif tool_name in ("open_cmd", "run_cmd", "run_command", "exec_cmd", "execute_command", "propose_terminal_command", "run_terminal_command"):
+            cmd_arg = safe_params.get("command") or safe_params.get("cmd") or safe_params.get("natural_request") or safe_params.get("input") or ""
+            return _execute_cmd_command(cmd_arg)
+
         # ── Live Real-Time Information, News & Utilities (Read-Only) ──────────
         elif tool_name == "get_current_datetime":
             tz_override = safe_params.get("timezone_override", "") or safe_params.get("timezone", "")
             return info_tools.get_current_datetime(timezone_override=tz_override)
 
+        elif tool_name == "get_weather":
+            city = safe_params.get("city", "") or safe_params.get("location", "") or safe_params.get("query", "")
+            country = safe_params.get("country", "")
+            return info_tools.get_weather(city=city, country=country)
+
         elif tool_name == "get_news":
             topic = safe_params.get("topic_or_location", "") or safe_params.get("topic", "") or safe_params.get("location", "") or safe_params.get("query", "")
             return info_tools.get_news(topic_or_location=topic)
 
-        elif tool_name == "answer_general_question":
-            q = safe_params.get("query", "") or safe_params.get("question", "")
+        elif tool_name in ("answer_general_question", "web_search", "search_web", "google_search"):
+            q = safe_params.get("query", "") or safe_params.get("question", "") or safe_params.get("q", "") or safe_params.get("search_query", "")
             return info_tools.answer_general_question(query=q)
+
+        elif tool_name == "query_spreadsheet":
+            doc_name = safe_params.get("doc_name", "") or safe_params.get("filename", "")
+            q = safe_params.get("query", "") or safe_params.get("question", "")
+            return info_tools.query_spreadsheet(doc_name=doc_name, query=q)
 
         # ── Destructive & Communication Tools (Executed After Confirmation) ──
         elif tool_name == "delete_file":
-            target_file = safe_params.get("filename") or safe_params.get("path") or ""
+            target_file = safe_params.get("target_file_path") or safe_params.get("filename") or safe_params.get("path") or ""
             valid, resolved_p, err = permissions.resolve_secure_workspace_path(target_file)
             if not valid:
                 return {"success": False, "message": err}
@@ -257,9 +341,13 @@ def execute_tool(tool_name: str, params: dict, confirmed_action_id: Optional[str
             url = f"https://web.whatsapp.com/send?text={urllib.parse.quote_plus(body)}"
             return browser.navigate_to(url)
 
+        elif tool_name == "open_whatsapp_chat":
+            recipient = safe_params.get("recipient") or safe_params.get("contact_name") or safe_params.get("contact") or safe_params.get("name") or ""
+            return native_apps.open_whatsapp_chat(recipient)
+
         elif tool_name == "send_whatsapp_desktop_message":
-            recipient = safe_params.get("recipient", "")
-            body = safe_params.get("message", "")
+            recipient = safe_params.get("recipient") or safe_params.get("contact_name") or safe_params.get("contact") or safe_params.get("name") or ""
+            body = safe_params.get("message") or safe_params.get("text") or safe_params.get("body") or ""
             return native_apps.send_whatsapp_desktop_message(recipient, body)
 
         elif tool_name == "check_whatsapp_notifications":
@@ -272,6 +360,56 @@ def execute_tool(tool_name: str, params: dict, confirmed_action_id: Optional[str
             mailto = f"mailto:{to}?subject={urllib.parse.quote(subject)}&body={urllib.parse.quote(body)}"
             platform_paths.launch_default_app(mailto)
             return {"success": True, "message": f"Drafted email to {to}."}
+
+        # ── Developer Superpowers Tools ────────────────────────────────────────
+        elif tool_name == "get_project_context":
+            from agent_tools import dev_tools
+            return dev_tools.get_project_context(repo_root=safe_params.get("repo_root"))
+
+        elif tool_name == "query_codebase":
+            from agent_tools import dev_tools
+            q = safe_params.get("query", "")
+            results = dev_tools.query_codebase(query=q, top_k=safe_params.get("top_k", 4))
+            return {"success": True, "results": results, "count": len(results)}
+
+        elif tool_name == "propose_terminal_command":
+            from agent_tools import dev_tools
+            return dev_tools.propose_terminal_command(natural_request=safe_params.get("natural_request", ""))
+
+        elif tool_name == "run_terminal_command":
+            from agent_tools import dev_tools
+            return dev_tools.execute_terminal_command(
+                command=safe_params.get("command", ""),
+                cwd=safe_params.get("cwd")
+            )
+
+        elif tool_name == "explain_git_diff":
+            from agent_tools import dev_tools
+            return dev_tools.explain_git_diff(
+                staged_only=safe_params.get("staged_only", False),
+                repo_root=safe_params.get("repo_root")
+            )
+
+        elif tool_name == "explain_error":
+            from agent_tools import dev_tools
+            return dev_tools.explain_error(
+                stack_trace=safe_params.get("stack_trace", ""),
+                repo_root=safe_params.get("repo_root")
+            )
+
+        elif tool_name == "activate_hackathon_mode":
+            from agent_tools import dev_tools
+            return dev_tools.activate_hackathon_mode(
+                deadline_hours=safe_params.get("deadline_hours", 24.0),
+                repo_root=safe_params.get("repo_root")
+            )
+
+        elif tool_name == "activate_focus_mode":
+            from agent_tools import dev_tools
+            return dev_tools.activate_focus_mode(
+                duration_minutes=safe_params.get("duration_minutes", 25),
+                blocked_sites=safe_params.get("blocked_sites")
+            )
 
         else:
             return {"success": False, "message": f"Unknown tool: {tool_name}"}
@@ -289,6 +427,58 @@ def execute_tool(tool_name: str, params: dict, confirmed_action_id: Optional[str
 
 # ── Desktop Cursor & Keyboard ──────────────────────────────────────────────────
 
+def _adjust_system_brightness(delta: int = 0, level: Optional[int] = None) -> dict:
+    """Adjust system screen brightness on Windows via WMI."""
+    if not platform_paths.IS_WINDOWS:
+        return {"success": False, "message": "Brightness adjustment is currently supported on Windows."}
+    try:
+        if level is not None:
+            target = max(0, min(100, level))
+        else:
+            try:
+                cmd_get = 'powershell -Command "(Get-WmiObject -Namespace root/wmi -Class WmiMonitorBrightness).CurrentBrightness"'
+                out = subprocess.check_output(cmd_get, shell=True, text=True).strip()
+                curr = int(out) if out.isdigit() else 70
+            except Exception:
+                curr = 70
+            target = max(0, min(100, curr + delta))
+
+        cmd_set = f'powershell -Command "(Get-WmiObject -Namespace root/wmi -Class WmiMonitorBrightnessMethods).WmiSetBrightness(1, {target})"'
+        subprocess.run(cmd_set, shell=True, check=True)
+        return {"success": True, "message": f"Set screen brightness to {target}%."}
+    except Exception as e:
+        try:
+            presses = 10 if delta < 0 else 10
+            key_name = 'brightnessdown' if delta < 0 else 'brightnessup'
+            code = f'pyautogui.press("{key_name}", presses={presses})'
+            _run_auto(code)
+            return {"success": True, "message": "Adjusted screen brightness."}
+        except Exception:
+            return {"success": False, "message": f"Could not adjust brightness: {e}"}
+
+
+def _adjust_system_volume(delta: int = 0, mute: bool = False) -> dict:
+    """Adjust master system audio volume on Windows."""
+    try:
+        if mute:
+            code = 'pyautogui.press("volumemute")'
+            _run_auto(code)
+            return {"success": True, "message": "Toggled volume mute."}
+
+        if delta > 0:
+            presses = 25 if delta >= 40 else 10
+            code = f'pyautogui.press("volumeup", presses={presses})'
+            _run_auto(code)
+            return {"success": True, "message": "Increased volume."}
+        else:
+            presses = 25 if delta <= -40 else 10
+            code = f'pyautogui.press("volumedown", presses={presses})'
+            _run_auto(code)
+            return {"success": True, "message": "Decreased volume."}
+    except Exception as e:
+        return {"success": False, "message": f"Could not adjust volume: {e}"}
+
+
 def _cursor_control(action, x=None, y=None, text=None, key=None):
     """OS-level mouse and keyboard automation via subprocess."""
     act = action.lower().strip()
@@ -305,7 +495,19 @@ def _cursor_control(action, x=None, y=None, text=None, key=None):
         safe_text = text.replace("\\", "\\\\").replace('"', '\\"').replace('\n', '\\n')
         code = f'pyautogui.write("{safe_text}", interval=0.04)'
     elif act == "press_key" and key:
-        code = f'pyautogui.press("{key}")'
+        k = key.lower().strip()
+        if k in ("volume_down", "volumedown", "volume down"):
+            return _adjust_system_volume(delta=-15)
+        elif k in ("volume_up", "volumeup", "volume up", "volume_max", "volumemax", "volume max"):
+            return _adjust_system_volume(delta=50 if "max" in k else 15)
+        elif k in ("volume_mute", "volumemute", "mute"):
+            return _adjust_system_volume(mute=True)
+        elif k in ("brightness_down", "brightnessdown", "brightness down"):
+            return _adjust_system_brightness(delta=-25)
+        elif k in ("brightness_up", "brightnessup", "brightness up", "brightness_max", "brightnessmax", "brightness max"):
+            return _adjust_system_brightness(delta=50 if "max" in k else 25)
+        else:
+            code = f'pyautogui.press("{key}")'
     else:
         return {"success": False, "message": f"Unknown cursor action or missing params: {action}"}
 
@@ -367,6 +569,46 @@ def _open_vscode() -> dict:
 
 def _open_app(app_name: str) -> dict:
     key = app_name.lower().strip()
+
+    if key in ("file explorer", "explorer", "files", "folder", "my computer", "this pc"):
+        try:
+            if platform_paths.IS_WINDOWS:
+                subprocess.Popen(["explorer.exe"])
+                return {"success": True, "message": "Opened File Explorer."}
+            else:
+                ok = platform_paths.launch_default_app(".")
+                if ok:
+                    return {"success": True, "message": "Opened File Manager."}
+        except Exception as e:
+            return {"success": False, "message": f"Could not open File Explorer: {e}"}
+
+    if key in ("browser", "web browser"):
+        chrome_exe = platform_paths.get_chrome_path()
+        if chrome_exe and (os.path.exists(chrome_exe) or shutil.which(chrome_exe)):
+            return _open_app("chrome")
+        return _open_brave()
+
+    if key in ("calc", "calculator"):
+        try:
+            popen_kwargs = {}
+            if platform_paths.NO_WINDOW_FLAGS:
+                popen_kwargs["creationflags"] = platform_paths.NO_WINDOW_FLAGS
+            subprocess.Popen(["calc.exe" if platform_paths.IS_WINDOWS else "calculator"], **popen_kwargs)
+            return {"success": True, "message": "Opened Calculator."}
+        except Exception as e:
+            return {"success": False, "message": f"Could not open Calculator: {e}"}
+
+    if key in ("terminal", "command prompt", "cmd", "powershell"):
+        try:
+            cmd = ["powershell.exe"] if platform_paths.IS_WINDOWS else ["terminal"]
+            subprocess.Popen(cmd)
+            return {"success": True, "message": "Opened Terminal."}
+        except Exception as e:
+            return {"success": False, "message": f"Could not open Terminal: {e}"}
+
+    if key in ("youtube", "youtube.com", "youtube desktop"):
+        return browser.navigate_to("https://www.youtube.com")
+
     if key in ("brave", "brave browser"):
         return _open_brave()
 
@@ -429,6 +671,57 @@ def _open_app(app_name: str) -> dict:
             return {"success": False, "message": f"Could not launch {app_name}: {e}"}
 
     return {"success": False, "message": f"Could not find or open {app_name} on {platform_paths.SYSTEM}."}
+
+
+def _execute_cmd_command(cmd_str: str) -> dict:
+    """
+    Executes a shell/CMD command or intelligently maps mkdir, touch, ren, echo to file_tools.
+    """
+    if not cmd_str or not str(cmd_str).strip():
+        return {"success": False, "message": "No command provided."}
+
+    raw = str(cmd_str).strip()
+    expanded_cmd = os.path.expandvars(raw)
+
+    # 1. Parse mkdir / md commands
+    mkdir_match = re.match(r"^(?:mkdir|md)\s+(.+)$", expanded_cmd, re.I)
+    if mkdir_match:
+        target_path = mkdir_match.group(1).strip().strip("\"'")
+        return file_tools.create_folder(folder_name=target_path)
+
+    # 2. Parse touch or echo > commands for file creation
+    touch_match = re.match(r"^(?:touch|type\s+nul\s*>\s*)\s*(.+)$", expanded_cmd, re.I)
+    if touch_match:
+        target_path = touch_match.group(1).strip().strip("\"'")
+        return file_tools.create_file(filename=target_path)
+
+    echo_match = re.match(r"^echo\s+(.*?)\s*>\s*(.+)$", expanded_cmd, re.I)
+    if echo_match:
+        content = echo_match.group(1).strip().strip("\"'")
+        target_path = echo_match.group(2).strip().strip("\"'")
+        return file_tools.create_file(filename=target_path, content=content)
+
+    # 3. Parse ren / move commands
+    ren_match = re.match(r"^(?:ren|rename|move)\s+(?:\"([^\"]+)\"|(\S+))\s+(?:\"([^\"]+)\"|(\S+))$", expanded_cmd, re.I)
+    if ren_match:
+        old_p = ren_match.group(1) or ren_match.group(2)
+        new_p = ren_match.group(3) or ren_match.group(4)
+        return file_tools.rename_file_or_folder(old_name=old_p, new_name=new_p)
+
+    # 4. Fallback execution via CMD / Shell Subprocess
+    try:
+        if platform_paths.IS_WINDOWS:
+            proc = subprocess.run(["cmd.exe", "/c", expanded_cmd], capture_output=True, text=True, timeout=10)
+        else:
+            proc = subprocess.run(expanded_cmd, shell=True, capture_output=True, text=True, timeout=10)
+        out = (proc.stdout or proc.stderr or "").strip()
+        return {
+            "success": proc.returncode == 0,
+            "message": out or f"Executed command: {raw}",
+            "returncode": proc.returncode
+        }
+    except Exception as e:
+        return {"success": False, "message": f"Command execution failed: {e}"}
 
 
 def _close_app(app_name: str) -> dict:
@@ -588,3 +881,86 @@ def strip_action_tag(text):
     cleaned = _ACTION_RE.sub("", text)
     cleaned = re.sub(r'\[ACTION:\{[^\]]*', "", cleaned)
     return cleaned.strip()
+
+
+class ActionTagStreamFilter:
+    """
+    Stream state machine that filters out [ACTION:{...}] tags across chunk boundaries
+    so raw JSON fragments never leak to TTS or chat bubbles.
+    """
+    def __init__(self):
+        self._in_action_tag = False
+        self._in_string = False
+        self._escape_next = False
+        self._brace_depth = 0
+        self._bracket_depth = 0
+        self._pending_prefix = ""
+
+    def filter_chunk(self, chunk: str) -> str:
+        text = self._pending_prefix + chunk
+        self._pending_prefix = ""
+        output = []
+        i = 0
+        n = len(text)
+
+        while i < n:
+            if not self._in_action_tag:
+                if text[i:].startswith("[ACTION:"):
+                    self._in_action_tag = True
+                    self._in_string = False
+                    self._escape_next = False
+                    self._bracket_depth = 1  # For '[' in '[ACTION:'
+                    self._brace_depth = 0
+                    i += len("[ACTION:")
+                    continue
+
+                potential_prefix = False
+                for p_len in range(1, len("[ACTION:")):
+                    prefix = "[ACTION:"[:p_len]
+                    if text[i:] == prefix:
+                        self._pending_prefix = text[i:]
+                        potential_prefix = True
+                        break
+                if potential_prefix:
+                    break
+
+                output.append(text[i])
+                i += 1
+            else:
+                ch = text[i]
+                if self._in_string:
+                    if self._escape_next:
+                        self._escape_next = False
+                    elif ch == '\\':
+                        self._escape_next = True
+                    elif ch == '"':
+                        self._in_string = False
+                else:
+                    if ch == '"':
+                        self._in_string = True
+                        self._escape_next = False
+                    elif ch == '{':
+                        self._brace_depth += 1
+                    elif ch == '}':
+                        if self._brace_depth > 0:
+                            self._brace_depth -= 1
+                    elif ch == '[':
+                        self._bracket_depth += 1
+                    elif ch == ']':
+                        if self._bracket_depth > 0:
+                            self._bracket_depth -= 1
+                        if self._bracket_depth <= 0 or (self._brace_depth == 0 and ch == ']'):
+                            self._in_action_tag = False
+                            self._in_string = False
+                            self._escape_next = False
+                            self._brace_depth = 0
+                            self._bracket_depth = 0
+                i += 1
+
+        return "".join(output)
+
+    def flush(self) -> str:
+        res = self._pending_prefix
+        self._pending_prefix = ""
+        return res
+

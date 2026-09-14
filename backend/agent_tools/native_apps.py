@@ -13,35 +13,36 @@ import subprocess
 from typing import Dict, Any, List, Tuple
 
 
-def send_whatsapp_desktop_message(recipient: str, message: str) -> Dict[str, Any]:
+def open_whatsapp_chat(recipient: str) -> Dict[str, Any]:
     """
-    Sends a message to a specific contact via native WhatsApp Desktop application.
-    Supports contact resolution, disambiguation, and verification.
+    Opens or focuses a specific contact's chat window in native WhatsApp Desktop application.
     """
     system = platform.system()
     if system == "Windows":
-        return send_whatsapp_desktop_message_windows(recipient, message)
+        return open_whatsapp_chat_windows(recipient)
     elif system == "Darwin":
-        return send_whatsapp_desktop_message_macos(recipient, message)
+        return open_whatsapp_chat_macos(recipient)
     else:
-        # Linux / other platforms fallback
         return {
             "success": False,
-            "message": (
-                "Native WhatsApp Desktop automation is not supported on Linux due to "
-                "varying sandbox configurations (Snap/Flatpak). Please use the browser-based "
-                "WhatsApp Web tool (send_whatsapp_message) instead."
-            )
+            "message": "Native WhatsApp Desktop automation is not supported on Linux."
         }
 
 
-def send_whatsapp_desktop_message_windows(recipient: str, message: str) -> Dict[str, Any]:
+def open_whatsapp_chat_windows(recipient: str) -> Dict[str, Any]:
     """
-    Windows implementation using pywinauto (UIA backend).
+    Windows implementation to open a specific contact's chat in WhatsApp Desktop.
+    Uses native window focus, Ctrl+F shortcut search, contact filtering, and Enter selection.
     """
+    if not recipient or not recipient.strip():
+        return {
+            "success": False,
+            "error_type": "AMBIGUOUS_RECIPIENT",
+            "message": "Recipient contact name is missing or empty. Please specify a contact name."
+        }
     try:
         import pywinauto
-        from pywinauto import Application
+        from pywinauto import Application, keyboard
     except ImportError:
         return {
             "success": False,
@@ -53,10 +54,8 @@ def send_whatsapp_desktop_message_windows(recipient: str, message: str) -> Dict[
     try:
         app = Application(backend="uia").connect(title_re=".*WhatsApp.*", timeout=2)
     except Exception:
-        # Launch using the registered URI protocol
         try:
             os.startfile("whatsapp:")
-            # Wait for application window to spawn
             time.sleep(3.0)
             app = Application(backend="uia").connect(title_re=".*WhatsApp.*", timeout=8)
         except Exception as e:
@@ -76,166 +75,73 @@ def send_whatsapp_desktop_message_windows(recipient: str, message: str) -> Dict[
 
     time.sleep(0.5)
 
-    # 2. Locate the Search Box Edit control
-    search_box = None
-    try:
-        # Look for edit controls with search-like properties
-        for child in window.descendants(control_type="Edit"):
-            name = child.element_info.name or ""
-            if "search" in name.lower() or name == "Search":
-                search_box = child
-                break
-        if not search_box:
-            # Fallback to first edit control found
-            edits = window.descendants(control_type="Edit")
-            if edits:
-                search_box = edits[0]
-    except Exception as e:
-        return {"success": False, "message": f"Error scanning UI tree for search box: {e}"}
+    # 2. Activate search via Ctrl+F shortcut
+    keyboard.send_keys("^f")
+    time.sleep(0.3)
+    keyboard.send_keys("^a{BACKSPACE}")
+    time.sleep(0.1)
 
-    if not search_box:
-        return {"success": False, "message": "Could not locate the search box in WhatsApp Desktop."}
-
-    # Click search and type recipient
-    try:
-        search_box.click_input()
-        # Clear existing text
-        search_box.type_keys("^a{BACKSPACE}", set_foreground=False)
-        search_box.type_keys(recipient, set_foreground=False)
-    except Exception as e:
-        return {"success": False, "message": f"Failed to type recipient in search box: {e}"}
-
-    # Wait for results to filter
-    time.sleep(1.2)
-
-    # 3. Scan results for matches in the contacts list
-    matches: List[Tuple[str, Any]] = []
-    seen_names = set()
-
-    try:
-        # Search results list elements are typically ListItems
-        for child in window.descendants(control_type="ListItem"):
-            name = child.element_info.name
-            if name and recipient.lower() in name.lower():
-                # Clean multi-line UWP list items to get just the header (contact name)
-                clean_name = name.split("\n")[0].strip()
-                if clean_name not in seen_names:
-                    seen_names.add(clean_name)
-                    matches.append((clean_name, child))
-
-        # If no ListItems, check Button elements
-        if not matches:
-            for child in window.descendants(control_type="Button"):
-                name = child.element_info.name
-                if name and recipient.lower() in name.lower() and name != "Send":
-                    clean_name = name.split("\n")[0].strip()
-                    if clean_name not in seen_names:
-                        seen_names.add(clean_name)
-                        matches.append((clean_name, child))
-    except Exception as e:
-        return {"success": False, "message": f"Error scanning search results: {e}"}
-
-    if not matches:
-        return {"success": False, "message": f"No contacts found matching '{recipient}' in WhatsApp Desktop."}
-
-    if len(matches) > 1:
-        match_names = [m[0] for m in matches]
-        return {
-            "success": False,
-            "error_type": "AMBIGUOUS_RECIPIENT",
-            "matches": match_names,
-            "message": f"Multiple contacts matched '{recipient}': {', '.join(match_names)}. Please specify the exact name."
-        }
-
-    # Unique match resolved
-    resolved_name, contact_element = matches[0]
-    try:
-        contact_element.click_input()
-    except Exception as e:
-        return {"success": False, "message": f"Failed to select contact '{resolved_name}': {e}"}
-
-    time.sleep(0.5)
-
-    # 4. Locate the message input box
-    message_input = None
-    try:
-        for child in window.descendants(control_type="Edit"):
-            name = child.element_info.name or ""
-            if "type a message" in name.lower() or "write a message" in name.lower() or "message" in name.lower():
-                message_input = child
-                break
-        
-        # Fallback to Document type (sometimes used in updated UWP apps)
-        if not message_input:
-            for child in window.descendants(control_type="Document"):
-                message_input = child
-                break
-
-        # Final fallback to last available Edit control
-        if not message_input:
-            edits = window.descendants(control_type="Edit")
-            if edits:
-                message_input = edits[-1]
-    except Exception as e:
-        return {"success": False, "message": f"Error scanning UI tree for message input: {e}"}
-
-    if not message_input:
-        return {"success": False, "message": "Could not locate message input field."}
-
-    # Type message
-    try:
-        message_input.click_input()
-        message_input.type_keys(message, with_spaces=True, set_foreground=False)
-    except Exception as e:
-        return {"success": False, "message": f"Failed to type message text: {e}"}
-
-    # 5. Click the Send button
-    send_btn = None
-    try:
-        for child in window.descendants(control_type="Button"):
-            name = child.element_info.name or ""
-            if name.lower() == "send" or "send" in name.lower():
-                send_btn = child
-                break
-    except Exception:
-        pass
-
-    try:
-        if send_btn:
-            send_btn.click_input()
-        else:
-            # Fallback to typing Enter inside message field
-            message_input.type_keys("{ENTER}", set_foreground=False)
-    except Exception as e:
-        return {"success": False, "message": f"Failed to click send button or press enter: {e}"}
-
+    # 3. Type contact name into search box
+    keyboard.send_keys(recipient, with_spaces=True)
     time.sleep(1.0)
 
-    # 6. Verification Step: Read back the last message bubble
-    last_message = ""
-    try:
-        messages = []
-        for child in window.descendants(control_type="ListItem"):
-            name = child.element_info.name
-            # Message elements usually contain sent/read receipts or time info
-            if name and any(receipt in name.lower() for receipt in ["sent", "read", "delivered", "delivered status"]):
-                messages.append(name)
-        if messages:
-            last_message = messages[-1]
-    except Exception:
-        pass
+    # 4. Press Enter to select top matching contact and open their chat window
+    keyboard.send_keys("{ENTER}")
+    time.sleep(0.5)
 
-    # Lightweight verification check
-    if last_message and message.lower()[:15] in last_message.lower():
-        return {
-            "success": True,
-            "message": f"Message sent to {resolved_name} successfully (verified via native UI readback)."
-        }
+    return {
+        "success": True,
+        "message": f"Opened chat for '{recipient}' in WhatsApp Desktop."
+    }
+
+
+def open_whatsapp_chat_macos(recipient: str) -> Dict[str, Any]:
+    """macOS implementation for opening WhatsApp chat."""
+    return send_whatsapp_desktop_message_macos(recipient, "")
+
+
+def send_whatsapp_desktop_message(recipient: str, message: str) -> Dict[str, Any]:
+    """
+    Sends a message to a specific contact via native WhatsApp Desktop application.
+    """
+    system = platform.system()
+    if system == "Windows":
+        return send_whatsapp_desktop_message_windows(recipient, message)
+    elif system == "Darwin":
+        return send_whatsapp_desktop_message_macos(recipient, message)
     else:
-        # Default success if UI match fails but send executed without exception
+        return {
+            "success": False,
+            "message": "Native WhatsApp Desktop automation is not supported on Linux."
+        }
+
+
+def send_whatsapp_desktop_message_windows(recipient: str, message: str) -> Dict[str, Any]:
+    """
+    Windows implementation: opens recipient chat window and types/sends the message.
+    """
+    # 1. Open contact chat window
+    open_res = open_whatsapp_chat_windows(recipient)
+    if not open_res.get("success"):
+        return open_res
+
+    time.sleep(0.4)
+
+    # 2. Type message into open chat field and press Enter
+    try:
+        from pywinauto import keyboard
+        keyboard.send_keys(message, with_spaces=True)
+        time.sleep(0.3)
+        keyboard.send_keys("{ENTER}")
+        time.sleep(0.5)
         return {
             "success": True,
-            "message": f"Message sent to {resolved_name} (unable to verify via last bubble text)."
+            "message": f"Message sent to {recipient} successfully in WhatsApp Desktop."
+        }
+    except Exception as e:
+        return {
+            "success": False,
+            "message": f"Failed to type or send message to {recipient}: {e}"
         }
 
 

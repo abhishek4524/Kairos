@@ -69,24 +69,21 @@ The user requested python documentation.
 
 def test_system_prompt_includes_tools_and_rules():
     prompt = llm_agent.get_system_prompt("en")
-    assert "Kairos" in prompt
+    assert "Arya" in prompt
     assert "Abhishek" in prompt
+
     assert "navigate_to" in prompt
     assert "find_and_click" in prompt
     assert "DESKTOP & WEB AUTOMATION TOOLS" in prompt
 
 
-@patch("llm_agent.groq_client")
-def test_generate_streaming_response_groq(mock_groq):
-    mock_chunk1 = MagicMock()
-    mock_chunk1.choices = [MagicMock()]
-    mock_chunk1.choices[0].delta.content = "Hello "
+@patch("core.provider_router.route_chat")
+def test_generate_streaming_response_groq(mock_route_chat):
+    def _fake_stream():
+        yield "Hello "
+        yield "Abhishek!"
 
-    mock_chunk2 = MagicMock()
-    mock_chunk2.choices = [MagicMock()]
-    mock_chunk2.choices[0].delta.content = "Abhishek!"
-
-    mock_groq.chat.completions.create.return_value = [mock_chunk1, mock_chunk2]
+    mock_route_chat.return_value = (_fake_stream(), "groq")
 
     chunks = list(llm_agent.generate_streaming_response(
         session_id="test_session",

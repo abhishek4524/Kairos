@@ -31,10 +31,10 @@ class EmotionProfile(TypedDict):
 EMOTION_PROFILES: dict[str, EmotionProfile] = {
     # ── Neutral / Default ────────────────────────────────────────────────────
     "neutral": {
-        "rate": "+10%",
+        "rate": "+0%",
         "pitch": "+0Hz",
         "volume": "+0%",
-        "description": "Calm, balanced, standard assistant cadence",
+        "description": "Calm, balanced, natural human assistant cadence",
     },
 
     # ── Positive / High Energy ───────────────────────────────────────────────

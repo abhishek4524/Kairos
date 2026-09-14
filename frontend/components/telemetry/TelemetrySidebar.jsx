@@ -3,7 +3,7 @@ import { motion } from 'framer-motion';
 import { 
   HardDrive, Cpu, Mic, Database, Code, Sliders, Zap, 
   CheckCircle2, RefreshCw, ChevronLeft, ChevronRight,
-  Terminal, Youtube, MessageSquare, Activity, Sparkles, Volume2, Clock
+  Terminal, Youtube, MessageSquare, Activity, Sparkles, Volume2, Clock, Camera
 } from 'lucide-react';
 
 const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:8000';
@@ -44,6 +44,20 @@ export default function TelemetrySidebar({
     fetchMetrics();
     const interval = setInterval(fetchMetrics, 5000);
     return () => clearInterval(interval);
+  }, []);
+
+  // Gesture status polling
+  const [gestureStatus, setGestureStatus] = useState(null);
+  useEffect(() => {
+    const fetchGesture = () => {
+      fetch(`${API_BASE}/api/gesture/status`)
+        .then(res => res.json())
+        .then(data => { if (data.status) setGestureStatus(data.status); })
+        .catch(() => {});
+    };
+    fetchGesture();
+    const id = setInterval(fetchGesture, 3000);
+    return () => clearInterval(id);
   }, []);
 
   const audioDb = status === 'Listening' ? '20dB' : status === 'Speaking' ? '18dB' : '0dB';
@@ -363,6 +377,71 @@ export default function TelemetrySidebar({
                 <span className="truncate text-slate-200">WhatsApp</span>
               </div>
             </div>
+          </div>
+
+          {/* ── Camera Gesture Telemetry ───────────────────────────── */}
+          <div className="p-2.5 rounded-2xl bg-slate-950/60 border border-slate-800/80 space-y-2">
+            <div className="flex items-center justify-between text-[10px] uppercase tracking-wider text-slate-400">
+              <span className="flex items-center gap-1.5 text-white font-bold">
+                <Camera size={11} className={gestureStatus?.is_running ? 'text-emerald-400' : 'text-slate-500'} />
+                <span>Camera Gesture</span>
+              </span>
+              <span className={`font-bold flex items-center gap-1 text-[9px] px-1.5 py-0.5 rounded border ${
+                gestureStatus?.is_running
+                  ? 'text-emerald-400 border-emerald-500/40 bg-emerald-950/30'
+                  : 'text-slate-500 border-slate-700/40'
+              }`}>
+                {gestureStatus?.is_running ? '● ACTIVE' : '○ OFFLINE'}
+              </span>
+            </div>
+
+            {gestureStatus && (
+              <>
+                <div className="flex items-center gap-1.5 flex-wrap">
+                  <span className={`px-1.5 py-0.5 rounded text-[9px] font-mono font-bold border ${
+                    gestureStatus.mode === 'system'
+                      ? 'text-blue-300 border-blue-500/40 bg-blue-950/30'
+                      : 'text-cyan-300 border-cyan-500/40 bg-cyan-950/30'
+                  }`}>
+                    {gestureStatus.mode === 'system' ? '💻 SYSTEM' : '🎭 3D MODEL'}
+                  </span>
+                  {['right_hand', 'left_hand'].map((h) => (
+                    <span key={h} className={`px-1.5 py-0.5 rounded text-[9px] font-mono font-bold border ${
+                      gestureStatus[h] === 'OPEN'
+                        ? 'text-emerald-400 border-emerald-500/40 bg-emerald-950/30'
+                        : gestureStatus[h] === 'CLOSED'
+                        ? 'text-red-400 border-red-500/40 bg-red-950/30'
+                        : 'text-slate-500 border-slate-700/40'
+                    }`}>
+                      {h === 'right_hand' ? 'R' : 'L'}: {gestureStatus[h] || 'NONE'}
+                    </span>
+                  ))}
+                </div>
+
+                <div className="space-y-1.5">
+                  <div>
+                    <div className="flex justify-between text-[9px] font-mono text-slate-500 mb-0.5">
+                      <span>Brightness</span>
+                      <span className="text-yellow-300">{gestureStatus.brightness ?? 50}%</span>
+                    </div>
+                    <div className="w-full h-1 bg-slate-800 rounded-full overflow-hidden">
+                      <div className="h-full bg-yellow-500/70 rounded-full transition-all duration-300"
+                        style={{ width: `${gestureStatus.brightness ?? 50}%` }} />
+                    </div>
+                  </div>
+                  <div>
+                    <div className="flex justify-between text-[9px] font-mono text-slate-500 mb-0.5">
+                      <span>Volume</span>
+                      <span className="text-blue-300">{gestureStatus.volume ?? 50}%</span>
+                    </div>
+                    <div className="w-full h-1 bg-slate-800 rounded-full overflow-hidden">
+                      <div className="h-full bg-blue-500/70 rounded-full transition-all duration-300"
+                        style={{ width: `${gestureStatus.volume ?? 50}%` }} />
+                    </div>
+                  </div>
+                </div>
+              </>
+            )}
           </div>
 
         </div>

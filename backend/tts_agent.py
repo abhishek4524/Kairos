@@ -28,35 +28,35 @@ if _FFMPEG and os.path.exists(_FFMPEG):
 else:
     print("[TTS] ffmpeg not found in tools/ or system PATH")
 
-# ── High-Quality Male Neural Voices Configuration ──────────────────────────────
-# Primary English Male: en-US-ChristopherNeural (Authoritative, natural, crisp, intelligent AI voice)
-# Secondary / Regional Male: en-IN-PrabhatNeural (Indian English Male)
-# Hindi Male: hi-IN-MadhurNeural (Natural Hindi Male)
+# ── High-Quality Female Neural Voices Configuration (Arya) ────────────────────
+# Primary English Female: en-US-AvaNeural (Natural, crisp AI female voice)
+# Hindi/Hinglish Female: hi-IN-SwaraNeural (Natural Hindi Female — handles Hinglish naturally)
 VOICE_MAP = {
-    "en": "en-US-ChristopherNeural",
-    "hi": "hi-IN-MadhurNeural",
-    "ur": "ur-PK-AsadNeural",
-    "ar": "ar-SA-HamedNeural",
-    "fr": "fr-FR-HenriNeural",
-    "de": "de-DE-ConradNeural",
-    "es": "es-ES-AlvaroNeural",
-    "ja": "ja-JP-KeitaNeural",
-    "ko": "ko-KR-InJoonNeural",
-    "zh": "zh-CN-YunxiNeural",
-    "pt": "pt-BR-AntonioNeural",
-    "ru": "ru-RU-DmitryNeural",
-    "it": "it-IT-DiegoNeural",
-    "tr": "tr-TR-AhmetNeural",
-    "ta": "ta-IN-ValluvarNeural",
-    "te": "te-IN-MohanNeural",
-    "bn": "bn-IN-BashkarNeural",
+    "en": "en-US-AvaNeural",
+    "hi": "hi-IN-SwaraNeural",
+    "hinglish": "hi-IN-SwaraNeural",   # Hindi neural voice handles Hinglish without bad accent
+    "ur": "ur-PK-UzmaNeural",
+    "ar": "ar-SA-ZariyahNeural",
+    "fr": "fr-FR-DeniseNeural",
+    "de": "de-DE-KatjaNeural",
+    "es": "es-ES-ElviraNeural",
+    "ja": "ja-JP-NanamiNeural",
+    "ko": "ko-KR-SunHiNeural",
+    "zh": "zh-CN-XiaoxiaoNeural",
+    "pt": "pt-BR-FranciscaNeural",
+    "ru": "ru-RU-SvetlanaNeural",
+    "it": "it-IT-ElsaNeural",
+    "tr": "tr-TR-EmelNeural",
+    "ta": "ta-IN-PallaviNeural",
+    "te": "te-IN-ShrutiNeural",
+    "bn": "bn-IN-TanishaaNeural",
 }
-DEFAULT_VOICE = "en-US-ChristopherNeural"
+DEFAULT_VOICE = "en-US-AvaNeural"  # English female (Arya) default — responses always in English
 
 def _get_edge_voice(language: str = "en") -> tuple[str, int, int]:
     voice = VOICE_MAP.get(language, DEFAULT_VOICE)
-    # Pitch: +0Hz, Rate: +10% for crisp, responsive AI assistant cadence
-    return voice, 0, +10
+    # Pitch: +0Hz, Rate: +0% for natural human cadence
+    return voice, 0, 0
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Edge-TTS generator with SSML emotional prosody
@@ -67,7 +67,7 @@ from tts_emotion_profiles import get_emotion_profile
 
 def _build_ssml(text: str, voice: str, emotion: str = "neutral") -> str:
     """
-    Wraps text in Edge-TTS compatible SSML with prosody tags from the emotion profile.
+    Wraps text in Edge-TTS compatible SSML with prosody tags and micro-pauses.
     Falls back to neutral profile if emotion is unrecognized.
     """
     profile = get_emotion_profile(emotion)
@@ -82,6 +82,12 @@ def _build_ssml(text: str, voice: str, emotion: str = "neutral") -> str:
             .replace(">", "&gt;")
             .replace('"', "&quot;")
             .replace("'", "&apos;")
+    )
+
+    # Insert natural human micro-pauses at punctuation boundaries
+    safe_text = (
+        safe_text.replace(", ", ', <break time="120ms"/> ')
+                 .replace(". ", '. <break time="180ms"/> ')
     )
 
     ssml = (
@@ -154,12 +160,49 @@ async def generate_audio_async(
     avatar: str = "kavya",
 ) -> tuple[bytes, None]:
     """
-    Edge-TTS high-quality male voice generation with SSML emotional prosody.
-    Returns (audio_bytes, None) for backward-compatible call signatures.
+    High-quality voice generation with fallback chain:
+      1. ElevenLabs TTS (if ELEVENLABS_API_KEY is set)
+      2. Edge-TTS (Microsoft Neural — online)
+      3. Piper TTS (offline fallback)
 
-    emotion: any label from tts_emotion_profiles.EMOTION_PROFILES.
-             Unrecognized labels silently fall back to 'neutral'.
+    Returns (audio_bytes, None) for backward-compatible call signatures.
     """
-    audio_bytes = await _generate_edge_audio(text, language, emotion)
+    try:
+        from core import connectivity
+        is_offline = connectivity.current_state().value == "OFFLINE"
+    except Exception:
+        is_offline = False
+
+    if os.getenv("KAIROS_FORCE_OFFLINE", "0").lower() in ("1", "true", "yes"):
+        is_offline = True
+
+    if is_offline:
+        print(f"[TTS] OFFLINE state active → synthesizing via Piper TTS (emotion={emotion})")
+        from providers import piper_tts
+        audio_bytes, _ = await piper_tts.synthesize_offline(text, language=language, emotion=emotion)
+        return audio_bytes, None
+
+    # ── Step 1: ElevenLabs TTS (best quality) ─────────────────────────────────
+    from providers import elevenlabs_tts
+    if elevenlabs_tts.is_configured():
+        try:
+            audio_bytes = await elevenlabs_tts.synthesize(text, language=language)
+            print(f"[TTS] ElevenLabs → {len(audio_bytes)} bytes")
+            return audio_bytes, None
+        except Exception as el_err:
+            print(f"[TTS] ElevenLabs failed ({el_err}) → falling back to Edge-TTS")
+
+    # ── Step 2: Edge-TTS (Microsoft Neural) ───────────────────────────────────
+    try:
+        audio_bytes = await _generate_edge_audio(text, language, emotion)
+        return audio_bytes, None
+    except Exception as edge_err:
+        print(f"[TTS] Edge-TTS failed ({edge_err}) → falling back to Piper TTS")
+
+    # ── Step 3: Piper TTS (offline) ───────────────────────────────────────────
+    from providers import piper_tts
+    audio_bytes, _ = await piper_tts.synthesize_offline(text, language=language, emotion=emotion)
     return audio_bytes, None
+
+
 

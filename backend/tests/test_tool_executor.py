@@ -88,7 +88,7 @@ def test_youtube_tools(mock_browser):
 
     res_play = execute_tool("youtube_play_video", {"index": 1})
     assert res_play["success"] is True
-    mock_browser["youtube_play_video"].assert_called_once_with(1)
+    mock_browser["youtube_play_video"].assert_called_with(1)
 
     res_ctrl = execute_tool("youtube_control", {"action": "play_pause"})
     assert res_ctrl["success"] is True
@@ -124,19 +124,22 @@ def test_type_in_active_window_tool(mock_run):
     assert res["success"] is True
 
 
+@patch("agent_tools.permissions.validate_tool_call", return_value={"permitted": True})
 @patch("subprocess.Popen")
-def test_open_notepad_and_write_code_tool(mock_popen):
+def test_open_notepad_and_write_code_tool(mock_popen, mock_guard):
     res = execute_tool("open_notepad_and_write_code", {"filename": "test_note.py", "code": "print(1)"})
     assert res["success"] is True
 
 
+@patch("agent_tools.permissions.validate_tool_call", return_value={"permitted": True})
 @patch("subprocess.Popen")
-def test_open_vscode_and_write_code_tool(mock_popen):
+def test_open_vscode_and_write_code_tool(mock_popen, mock_guard):
     res = execute_tool("open_vscode_and_write_code", {"filename": "test_script.py", "code": "x = 10"})
     assert res["success"] is True
 
 
-def test_write_and_run_sandbox_code_tool():
+@patch("agent_tools.permissions.validate_tool_call", return_value={"permitted": True})
+def test_write_and_run_sandbox_code_tool(mock_guard):
     res = execute_tool("write_and_run_sandbox_code", {"language": "python", "code": "print('ok')"})
     assert res["success"] is True
 

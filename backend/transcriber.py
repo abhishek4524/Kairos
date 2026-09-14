@@ -319,7 +319,7 @@ class RealTimeTranscriber:
 
             print(f"[STT] Endpoint reached. Transcribing {len(buffer_to_transcribe)/self.sample_rate:.1f}s audio. Mode={self.stt_mode}")
 
-            # Primary Path: Groq API; Fallback: Local faster-whisper
+            # Primary Path: Groq Whisper API; Fallback: Local faster-whisper
             text = ""
             detected_lang = expected_lang if (expected_lang and expected_lang != "auto") else "en"
 
@@ -348,8 +348,9 @@ class RealTimeTranscriber:
 
         return None
 
+
     # ──────────────────────────────────────────────────────────────────────── #
-    #  Primary: Groq Whisper API (whisper-large-v3) with verbose_json          #
+    #  Secondary: Groq Whisper API (whisper-large-v3) with verbose_json        #
     # ──────────────────────────────────────────────────────────────────────── #
     def _transcribe_groq_api(self, audio_array: np.ndarray, expected_lang: str = "auto"):
         try:

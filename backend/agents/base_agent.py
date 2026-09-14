@@ -1,14 +1,14 @@
 """
-base_agent.py — Base sub-agent class for Kairos multi-agent architecture.
+base_agent.py — Base sub-agent class for Arya multi-agent architecture.
 """
 
 import logging
 from typing import List, Dict, Any, Optional, Callable
 from agent_tools.registry import format_system_tools_prompt, get_tool_schemas_for_agent
-from llm_agent import SYSTEM_PROMPT, _SHARED_RULES, generate_streaming_response, LOOP_MODEL
+from llm_agent import GF_MODE_PROMPT, ASSISTANT_MODE_PROMPT, _SHARED_RULES, generate_streaming_response, LOOP_MODEL
 from agent_loop import run_agentic_loop, AgentLoopResult
 
-logger = logging.getLogger("kairos.agents.base")
+logger = logging.getLogger("arya.agents.base")
 
 
 class BaseSubAgent:
@@ -17,9 +17,10 @@ class BaseSubAgent:
     tool_names: List[str] = []
     system_prompt_addon: str = ""
 
-    def get_system_prompt(self, language: str = "en") -> str:
+    def get_system_prompt(self, language: str = "hi", mode: str = "gf") -> str:
         """Constructs focused system prompt containing ONLY this sub-agent's allowed tools."""
-        base_prompt = SYSTEM_PROMPT.format(shared=_SHARED_RULES).strip()
+        base = GF_MODE_PROMPT if mode != "assistant" else ASSISTANT_MODE_PROMPT
+        base_prompt = base.format(shared=_SHARED_RULES).strip()
         if self.system_prompt_addon:
             base_prompt += "\n\n" + self.system_prompt_addon.strip()
 
@@ -45,12 +46,13 @@ class BaseSubAgent:
         skip_memory: bool = False,
         on_rag_callback = None,
         selected_doc_ids: Optional[List[str]] = None,
+        mode: str = "gf",
     ) -> Dict[str, Any]:
         """
         Executes request through either fast streaming path or agentic loop path.
         """
-        sys_prompt = self.get_system_prompt()
-        logger.info("[%s] running request (complexity=%s, tools=%d)", self.name, complexity, len(self.tool_names))
+        sys_prompt = self.get_system_prompt(mode=mode)
+        logger.info("[%s] running request (complexity=%s, tools=%d, mode=%s)", self.name, complexity, len(self.tool_names), mode)
 
         if complexity == "complex" and self.tool_names:
             # Complex task with action tools → run PLAN → EXECUTE → REFLECT → RETRY loop
@@ -79,6 +81,7 @@ class BaseSubAgent:
                 on_rag_callback=on_rag_callback,
                 selected_doc_ids=selected_doc_ids,
                 system_prompt_override=sys_prompt,
+                mode=mode,
             ):
                 chunks.append(chunk)
 

@@ -21,6 +21,11 @@ class BrowsingAgent(BaseSubAgent):
         "youtube_search",
         "youtube_play_video",
         "youtube_control",
+        "youtube_like_video",
+        "youtube_subscribe",
+        "open_github",
+        "open_instagram",
+        "instagram_action",
         "open_brave",
         "work_mode",
     ]

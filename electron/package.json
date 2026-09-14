@@ -1,15 +1,17 @@
 {
-  "name": "kavya-desktop",
-  "productName": "Kavya",
+  "name": "Arya",
+  "productName": "Arya",
   "version": "1.0.0",
-  "description": "Kavya — Personal AI Assistant",
+  "description": "Arya — Personal Female AI Assistant",
   "main": "main.js",
   "author": "Abhishek Kumar",
   "private": true,
   "scripts": {
     "start": "electron .",
+    "dev": "electron . --dev",
     "build": "electron-builder --win --x64",
-    "dev": "electron . --dev"
+    "build:portable": "electron-builder --win portable --x64",
+    "build:all": "electron-builder --win --x64 --publish=never"
   },
   "dependencies": {
     "electron-is-dev": "^2.0.0"
@@ -19,15 +21,20 @@
     "electron-builder": "^24.13.3"
   },
   "build": {
-    "appId": "com.abhishek.kavya",
-    "productName": "Kavya",
+    "appId": "com.abhishek.arya",
+    "productName": "Arya",
+    "copyright": "Copyright 2025 Abhishek Kumar",
+    "publish": null,
     "directories": {
-      "output": "dist-installer"
+      "output": "C:\\arya-build-output"
     },
     "files": [
       "main.js",
       "preload.js",
       "assets/**/*"
+    ],
+    "asarUnpack": [
+      "backend/**/*"
     ],
     "extraResources": [
       {
@@ -43,7 +50,9 @@
           "!**/__pycache__/**",
           "!**/*.pyc",
           "!venv/Lib/site-packages/torch/**",
-          "!venv/Lib/site-packages/nvidia/**"
+          "!venv/Lib/site-packages/nvidia/**",
+          "!venv/Lib/site-packages/triton/**",
+          "!venv/Lib/site-packages/~*/**"
         ]
       },
       {
@@ -54,10 +63,8 @@
     ],
     "win": {
       "target": [
-        {
-          "target": "nsis",
-          "arch": ["x64"]
-        }
+        { "target": "nsis", "arch": ["x64"] },
+        { "target": "portable", "arch": ["x64"] }
       ],
       "icon": "assets/icon.ico",
       "requestedExecutionLevel": "asInvoker"
@@ -67,7 +74,15 @@
       "allowToChangeInstallationDirectory": true,
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
-      "shortcutName": "Kavya"
+      "shortcutName": "Arya",
+      "installerIcon": "assets/icon.ico",
+      "uninstallerIcon": "assets/icon.ico",
+      "runAfterFinish": true,
+      "deleteAppDataOnUninstall": false
+    },
+    "portable": {
+      "artifactName": "Arya-Portable-${version}.exe"
     }
   }
 }
+

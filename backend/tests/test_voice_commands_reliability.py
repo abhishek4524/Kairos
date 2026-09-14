@@ -180,9 +180,10 @@ class TestVoiceCommandsReliability(unittest.TestCase):
         mock_page.keyboard.press.assert_called_once_with("PageDown")
 
     # ── Command 6: "Write a simple code of Python in Notepad" ──────────────────
+    @patch("agent_tools.permissions.validate_tool_call", return_value={"permitted": True})
     @patch("config.platform_paths.get_text_editor_command")
     @patch("subprocess.Popen")
-    def test_cmd_notepad_code_generation_disk_write_and_launch(self, mock_popen, mock_editor_cmd):
+    def test_cmd_notepad_code_generation_disk_write_and_launch(self, mock_popen, mock_editor_cmd, mock_guard):
         """Confirm code generation writes UTF-8 file to workspace and launches Notepad with file path."""
         code_content = "def hello():\n    print('Hello from Kairos!')\n\nhello()\n"
         test_filename = "test_hello.py"
@@ -211,7 +212,8 @@ class TestVoiceCommandsReliability(unittest.TestCase):
         if os.path.exists(test_path):
             os.remove(test_path)
 
-    def test_cmd_notepad_empty_code_error(self):
+    @patch("agent_tools.permissions.validate_tool_call", return_value={"permitted": True})
+    def test_cmd_notepad_empty_code_error(self, mock_guard):
         """Confirm writing empty code returns specific diagnostic error."""
         res = executor.execute_tool("open_notepad_and_write_code", {
             "filename": "empty.py",
@@ -220,6 +222,113 @@ class TestVoiceCommandsReliability(unittest.TestCase):
         self.assertFalse(res["success"])
         self.assertEqual(res.get("error_type"), "EMPTY_CODE")
         self.assertIn("No code content was provided", res["message"])
+
+
+# ── Commands 7–9: Work Mode & VS Code Launchers ────────────────────────────────
+
+class TestWorkModeLaunchers(unittest.TestCase):
+    """Test suite for 'activate work mode', 'open VS Code' voice commands."""
+
+    def setUp(self):
+        for var in ["KAIROS_CHROME_PATH", "KAIROS_VSCODE_PATH", "KAIROS_DEFAULT_WORKSPACE"]:
+            if var in os.environ:
+                del os.environ[var]
+
+    # ── Command 7: "Activate work mode" ───────────────────────────────────────
+    @patch("agent_tools.browser.run_work_mode")
+    @patch("config.platform_paths.get_chrome_path")
+    def test_work_mode_full_success(self, mock_chrome_path, mock_run_work_mode):
+        """Confirm 'activate work mode' calls run_work_mode when Chrome is found."""
+        mock_chrome_path.return_value = "C:\\chrome.exe"
+        mock_run_work_mode.return_value = {
+            "success": True,
+            "opened": 4,
+            "failed": [],
+            "message": "Work Mode activated: 4 sites opened in Chrome and VS Code launched.",
+        }
+        with patch("os.path.exists", return_value=True):
+            res = executor.execute_tool("work_mode", {})
+        self.assertTrue(res["success"])
+        self.assertIn("4", res["message"])
+        mock_run_work_mode.assert_called_once()
+
+    @patch("agent_tools.browser.run_work_mode")
+    @patch("config.platform_paths.get_chrome_path")
+    def test_work_mode_partial_failure_reported(self, mock_chrome_path, mock_run_work_mode):
+        """Confirm work_mode passes through partial failure from run_work_mode clearly."""
+        mock_chrome_path.return_value = "C:\\chrome.exe"
+        mock_run_work_mode.return_value = {
+            "success": False,
+            "opened": 3,
+            "failed": ["https://chat.openai.com"],
+            "message": "3 of 4 sites opened. Failed: chat.openai.com",
+        }
+        with patch("os.path.exists", return_value=True):
+            res = executor.execute_tool("work_mode", {})
+        self.assertIn("3", res.get("message", ""))
+
+    @patch("config.platform_paths.get_chrome_path", return_value=None)
+    def test_work_mode_chrome_not_installed_error(self, mock_chrome):
+        """Confirm work_mode reports CHROME_NOT_FOUND clearly when Chrome isn't installed."""
+        res = executor.execute_tool("work_mode", {})
+        self.assertFalse(res["success"])
+        self.assertEqual(res.get("error_type"), "CHROME_NOT_FOUND")
+        self.assertIn("Chrome", res["message"])
+
+    # ── Command 8: "Open VS Code" ──────────────────────────────────────────────
+    @patch("subprocess.Popen")
+    @patch("config.platform_paths.get_vscode_path")
+    def test_cmd_open_vscode_success(self, mock_vsc_path, mock_popen):
+        """Confirm 'open VS Code' spawns VS Code process and reports success."""
+        mock_vsc_path.return_value = "C:\\Program Files\\Microsoft VS Code\\Code.exe"
+        with patch("os.path.exists", return_value=True):
+            res = executor.execute_tool("open_vscode", {})
+        self.assertTrue(res["success"])
+        self.assertIn("VS Code", res["message"])
+        self.assertTrue(mock_popen.called)
+
+    @patch("config.platform_paths.get_vscode_path", return_value=None)
+    def test_cmd_open_vscode_not_installed_error(self, mock_vsc_path):
+        """Confirm 'open VS Code' reports VSCODE_NOT_FOUND when not on PATH."""
+        res = executor.execute_tool("open_vscode", {})
+        self.assertFalse(res["success"])
+        self.assertEqual(res.get("error_type"), "VSCODE_NOT_FOUND")
+        self.assertIn("VS Code", res["message"])
+
+    # ── Command 9: "Get weather in Mumbai" ────────────────────────────────────
+    @patch("agent_tools.info_tools.get_weather")
+    def test_cmd_get_weather_success(self, mock_weather):
+        """Confirm get_weather returns structured result and spoken_message."""
+        mock_weather.return_value = {
+            "success": True,
+            "city": "Mumbai",
+            "country": "India",
+            "temperature_c": 28.5,
+            "feels_like_c": 32.1,
+            "humidity_pct": 85,
+            "wind_speed_kmh": 14.4,
+            "precipitation_mm": 0.0,
+            "weather_description": "Partly cloudy",
+            "spoken_message": "The weather in Mumbai, India right now is partly cloudy. Temperature is 28.5°C, feels like 32.1°C. Humidity 85%, wind speed 14.4 km/h.",
+            "message": "The weather in Mumbai, India right now is partly cloudy.",
+        }
+        res = executor.execute_tool("get_weather", {"city": "Mumbai", "country": "India"})
+        self.assertTrue(res["success"])
+        self.assertEqual(res["city"], "Mumbai")
+        self.assertIn("temperature_c", res)
+        self.assertIn("spoken_message", res)
+        mock_weather.assert_called_once_with(city="Mumbai", country="India")
+
+    @patch("agent_tools.info_tools.get_weather")
+    def test_cmd_get_weather_unknown_city(self, mock_weather):
+        """Confirm get_weather returns graceful error for unknown city."""
+        mock_weather.return_value = {
+            "success": False,
+            "message": "Could not find a location named 'Xyzzyburgh'. Please check the city name.",
+        }
+        res = executor.execute_tool("get_weather", {"city": "Xyzzyburgh"})
+        self.assertFalse(res["success"])
+        self.assertIn("Xyzzyburgh", res["message"])
 
 
 if __name__ == "__main__":

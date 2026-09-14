@@ -9,7 +9,9 @@ export default function VoiceDock({
   status,
   activeAvatar,
   isContinuousListening = false,
-  onToggleContinuousListening
+  onToggleContinuousListening,
+  personaMode = 'gf',
+  onPersonaModeSwitch,
 }) {
   const [text, setText] = useState('');
   const [showFeedbackFlash, setShowFeedbackFlash] = useState(false);
@@ -86,7 +88,37 @@ export default function VoiceDock({
       {/* Main Glass Dock Container */}
       <div className="w-full glass-panel rounded-full p-2 md:p-2.5 flex items-center shadow-[0_12px_45px_rgba(0,0,0,0.6)] border border-slate-700/60 gap-2">
         
-        {/* Text Input */}
+        {/* Persona Mode Pill */}
+        {onPersonaModeSwitch && (
+          <div className="shrink-0 flex items-center rounded-full border border-slate-700/80 bg-slate-900/80 overflow-hidden">
+            <button
+              type="button"
+              onClick={() => onPersonaModeSwitch('gf')}
+              title="GF Mode — warm & friendly"
+              className={`px-3 py-1.5 text-[10px] font-mono font-bold uppercase tracking-wider transition-all cursor-pointer ${
+                personaMode === 'gf'
+                  ? 'bg-pink-600/70 text-white'
+                  : 'text-slate-500 hover:text-slate-200'
+              }`}
+            >
+              💗 GF
+            </button>
+            <button
+              type="button"
+              onClick={() => onPersonaModeSwitch('assistant')}
+              title="Assistant Mode — precise & executive"
+              className={`px-3 py-1.5 text-[10px] font-mono font-bold uppercase tracking-wider transition-all cursor-pointer ${
+                personaMode === 'assistant'
+                  ? 'bg-blue-600/70 text-white'
+                  : 'text-slate-500 hover:text-slate-200'
+              }`}
+            >
+              🤖 AST
+            </button>
+          </div>
+        )}
+
+                {/* Text Input */}
         <form onSubmit={handleSubmit} className="flex-1 flex items-center h-12 md:h-13 bg-slate-900/80 rounded-full px-4 border border-slate-700/80 focus-within:border-blue-400 focus-within:shadow-[0_0_18px_rgba(59,130,246,0.3)] transition-all duration-300">
           <input 
             type="text" 

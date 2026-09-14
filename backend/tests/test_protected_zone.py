@@ -17,12 +17,13 @@ from agent_tools import permissions
 class TestProtectedZone(unittest.TestCase):
 
     def test_core_security_files_blocked(self):
+        from agent_tools.audit_logger import AUDIT_LOG_FILE
         backend_dir = protected_zone.BACKEND_DIR
         sec_files = [
             os.path.join(backend_dir, ".env"),
             os.path.join(backend_dir, "agent_tools", "permissions.py"),
             os.path.join(backend_dir, "agent_tools", "protected_zone.py"),
-            os.path.join(backend_dir, "logs", "tool_audit.log"),
+            AUDIT_LOG_FILE,
         ]
         for sfile in sec_files:
             blocked, reason = protected_zone.is_path_protected(sfile)

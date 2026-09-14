@@ -16,6 +16,7 @@ from agents.system_agent import SystemAgent
 from agents.memory_agent import MemoryAgent
 from agents.general_agent import GeneralAgent
 from agents.info_agent import InfoAgent
+from agents.dev_agent import DevAgent
 from llm_agent import LOOP_MODEL, GROQ_MODEL
 from agent_loop import classify_complexity
 
@@ -30,6 +31,7 @@ CATEGORIES = [
     "research_memory",
     "general_info",
     "chitchat_general",
+    "dev",
 ]
 
 _CLASSIFY_SYSTEM = """\
@@ -41,9 +43,11 @@ Classify the user's input into EXACTLY ONE category:
 4. research_memory - asking about user facts, past context, ingested PDFs, notes, personal info stored in memory.
 5. general_info - asking for current date/time ("aaj date kya hai", "what time is it"), live news ("aaj ki Muzaffarnagar news bata", "tech news today"), live events, weather, sports scores, or real-time web facts.
 6. chitchat_general - greetings, casual chat, general conversational Q&A without live search.
+7. dev - git diffs, commit messages, PR descriptions, codebase search, terminal copilot, stack trace debugging, hackathon mode, focus mode.
 
-Return ONLY valid JSON (no markdown, no prose):
-{"category": "<category_name>", "confidence": <0.00_to_1.00>}
+CRITICAL INSTRUCTION: Output ONLY a raw JSON object. Do NOT include markdown code fences (no ``` or ```json), no preamble, no commentary, and no explanation text.
+Example output format:
+{"category": "general_info", "confidence": 0.98}
 """
 
 _FEW_SHOT_EXAMPLES = [
@@ -60,6 +64,29 @@ _FEW_SHOT_EXAMPLES = [
 ]
 
 
+def _parse_classification_json(raw: str) -> Optional[Dict[str, Any]]:
+    """Strips wrapper artifacts (markdown fences, preamble) and parses JSON object."""
+    if not raw:
+        return None
+    cleaned = raw.strip()
+    cleaned = re.sub(r"^```(?:json)?\s*", "", cleaned, flags=re.IGNORECASE).strip()
+    cleaned = re.sub(r"\s*```$", "", cleaned).strip()
+
+    try:
+        return json.loads(cleaned)
+    except Exception:
+        pass
+
+    match = re.search(r"\{.*\}", cleaned, re.DOTALL)
+    if match:
+        try:
+            return json.loads(match.group(0))
+        except Exception:
+            pass
+
+    return None
+
+
 def classify(
     user_message: str,
     history: Optional[List[Dict]] = None,
@@ -71,9 +98,6 @@ def classify(
     Returns (category_name, confidence_score).
     """
     t0 = time.time()
-    if not groq_client:
-        logger.warning("[CLASSIFY] groq_client missing, falling back to chitchat_general")
-        return "chitchat_general", 0.50
 
     messages = [{"role": "system", "content": _CLASSIFY_SYSTEM}]
     for ex_user, ex_out in _FEW_SHOT_EXAMPLES:
@@ -87,34 +111,83 @@ def classify(
 
     messages.append({"role": "user", "content": user_message})
 
+    raw1 = ""
+    data = None
+
+    # Attempt 1: groq_client if provided, else provider_router
     try:
-        resp = groq_client.chat.completions.create(
-            model=model,
-            messages=messages,
-            stream=False,
-            max_tokens=35,
-            temperature=0.0,
-        )
-        dt_ms = (time.time() - t0) * 1000
-        raw = resp.choices[0].message.content.strip()
-        raw_clean = re.sub(r"^```(?:json)?\s*|\s*```$", "", raw, flags=re.DOTALL).strip()
-        data = json.loads(raw_clean)
-
-        cat = str(data.get("category", "chitchat_general")).lower().strip()
-        conf = float(data.get("confidence", 0.50))
-
-        if cat not in CATEGORIES:
-            logger.warning("[CLASSIFY] Invalid category '%s', falling back to chitchat_general", cat)
-            cat = "chitchat_general"
-            conf = 0.50
-
-        logger.info("[CLASSIFY] result: cat=%s conf=%.2f (latency=%.1fms)", cat, conf, dt_ms)
-        return cat, conf
-
+        if groq_client:
+            resp = groq_client.chat.completions.create(
+                model=model,
+                messages=messages,
+                stream=False,
+                max_tokens=35,
+                temperature=0.0,
+            )
+            raw1 = resp.choices[0].message.content.strip()
+        else:
+            from core.provider_router import route_chat
+            content_str, _ = route_chat(
+                messages=messages,
+                stream=False,
+                max_tokens=35,
+                temperature=0.0,
+            )
+            raw1 = content_str.strip()
+        data = _parse_classification_json(raw1)
     except Exception as exc:
+        raw1 = f"<Exception: {exc}>"
+        data = None
+
+    # Retry 1 if parsing failed before falling back
+    if data is None:
+        logger.warning("[CLASSIFY] Classification attempt 1 failed to parse. Raw response: %r", raw1)
+        retry_messages = list(messages)
+        retry_messages.append({
+            "role": "user",
+            "content": "STRICT REMINDER: Output ONLY valid raw JSON with format {\"category\": \"...\", \"confidence\": 0.95}. No markdown fences or text."
+        })
+        try:
+            if groq_client:
+                retry_resp = groq_client.chat.completions.create(
+                    model=model,
+                    messages=retry_messages,
+                    stream=False,
+                    max_tokens=35,
+                    temperature=0.0,
+                )
+                raw2 = retry_resp.choices[0].message.content.strip()
+            else:
+                from core.provider_router import route_chat
+                content_str, _ = route_chat(
+                    messages=retry_messages,
+                    stream=False,
+                    max_tokens=35,
+                    temperature=0.0,
+                )
+                raw2 = content_str.strip()
+            data = _parse_classification_json(raw2)
+            if data is None:
+                logger.warning("[CLASSIFY] Classification retry attempt failed to parse JSON. Raw retry response: %r", raw2)
+        except Exception as exc_retry:
+            logger.warning("[CLASSIFY] Classification retry attempt failed with exception: %s", exc_retry)
+
+    if data is None:
         dt_ms = (time.time() - t0) * 1000
-        logger.warning("[CLASSIFY] classification error (%s) in %.1fms, falling back to chitchat_general", exc, dt_ms)
+        logger.warning("[CLASSIFY] All classification attempts failed in %.1fms, falling back to chitchat_general", dt_ms)
         return "chitchat_general", 0.50
+
+    dt_ms = (time.time() - t0) * 1000
+    cat = str(data.get("category", "chitchat_general")).lower().strip()
+    conf = float(data.get("confidence", 0.50))
+
+    if cat not in CATEGORIES:
+        logger.warning("[CLASSIFY] Invalid category '%s', falling back to chitchat_general", cat)
+        cat = "chitchat_general"
+        conf = 0.50
+
+    logger.info("[CLASSIFY] result: cat=%s conf=%.2f (latency=%.1fms)", cat, conf, dt_ms)
+    return cat, conf
 
 
 # Sub-agent instances
@@ -125,6 +198,7 @@ _AGENTS = {
     "research_memory": MemoryAgent(),
     "general_info": InfoAgent(),
     "chitchat_general": GeneralAgent(),
+    "dev": DevAgent(),
 }
 
 
@@ -152,6 +226,7 @@ def orchestrate(
     skip_memory: bool = False,
     on_rag_callback = None,
     selected_doc_ids: Optional[List[str]] = None,
+    mode: str = "gf",
 ) -> Dict[str, Any]:
     """
     Main orchestrator entry point.
@@ -166,8 +241,20 @@ def orchestrate(
         from agent_tools.executor import execute_tool
         execute_fn = execute_tool
 
-    # 1. Classify intent
-    category, confidence = classify(user_message, history, groq_client, model=LOOP_MODEL)
+    # Code-level guard: Enforce real-time datetime execution for date/time/day queries
+    is_datetime_query = bool(re.search(r"\b(date|time|day|clock|aaj|today)\b", user_message, re.IGNORECASE))
+    if is_datetime_query:
+        category, confidence = "general_info", 0.99
+        try:
+            dt_res = execute_fn("get_current_datetime", {})
+            if dt_res and isinstance(dt_res, dict):
+                dt_str = f"Date: {dt_res.get('date')}, Time: {dt_res.get('time')}, Day: {dt_res.get('day_of_week')}, Timezone: {dt_res.get('timezone')}"
+                user_message = f"{user_message}\n[REAL-TIME SYSTEM VERIFICATION: get_current_datetime -> {dt_str}]"
+        except Exception as _dt_err:
+            logger.warning("[ORCHESTRATOR] Pre-execution of get_current_datetime failed: %s", _dt_err)
+    else:
+        # 1. Classify intent
+        category, confidence = classify(user_message, history, groq_client, model=LOOP_MODEL)
 
     # 2. Select sub-agent (with confidence fallback)
     sub_agent, effective_category = get_agent_for_category(category, confidence)
@@ -197,6 +284,7 @@ def orchestrate(
         skip_memory=skip_memory,
         on_rag_callback=on_rag_callback,
         selected_doc_ids=selected_doc_ids,
+        mode=mode,
     )
 
     result["category"] = category

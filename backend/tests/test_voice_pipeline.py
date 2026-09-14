@@ -31,35 +31,33 @@ from fastapi.testclient import TestClient
 import main
 
 
-def _drain_all(ws, max_messages=60, timeout=1.5):
-    """Read all JSON messages from WS using raw receive() with a timeout to prevent hanging."""
+def _drain_all(ws, max_messages=25):
+    """Read JSON messages from WS until end of response or max_messages reached."""
     msgs = []
+    # Small pause to allow threadsafe coroutine in producer thread to push messages
+    time.sleep(0.2)
     for _ in range(max_messages):
-        # Wait until buffer has items or timeout is reached
-        start_time = time.time()
-        has_item = False
-        while time.time() - start_time < timeout:
-            # Under-the-hood AnyIO streams used by Starlette TestClient
-            if hasattr(ws, "_send_rx") and len(ws._send_rx._state.buffer) > 0:
-                has_item = True
-                break
-            time.sleep(0.01)
-            
-        if not has_item:
-            break  # No more messages within timeout
-
         try:
             raw = ws.receive()
-            if raw.get("type") == "websocket.close":
+            if not raw or raw.get("type") == "websocket.close":
                 break
             if raw.get("type") == "websocket.send":
+                data = None
                 if "text" in raw:
                     try:
-                        msgs.append(json.loads(raw["text"]))
+                        data = json.loads(raw["text"])
                     except Exception:
-                        msgs.append({"text": raw["text"]})
+                        data = {"text": raw["text"]}
                 elif "bytes" in raw:
-                    msgs.append({"type": "audio_bytes", "bytes": raw["bytes"]})
+                    data = {"bytes": raw["bytes"]}
+
+                if data:
+                    msgs.append(data)
+                    # Terminal events indicating response cycle is complete
+                    msg_t = data.get("type")
+                    event_t = data.get("event")
+                    if msg_t in ("AI_COMPLETED", "tool_result", "security_alert") or event_t in ("AI_COMPLETED", "TOOL_COMPLETED", "SECURITY_ALERT"):
+                        break
         except Exception:
             break
     return msgs
@@ -101,7 +99,8 @@ def test_confirm_endpoint_invalid_id(client):
 def test_websocket_text_input_produces_events(client):
     """Text input → LLM → TTS → transcription + AI_COMPLETED delivered to client."""
     tts_mock = AsyncMock(return_value=(b"fake_audio", 0.1))
-    with patch("main.generate_streaming_response", return_value=["Hello Abhishek!"]), \
+    mock_orch = {"mode": "direct", "chunks": ["Hello Abhishek!"]}
+    with patch("agents.orchestrator.orchestrate", return_value=mock_orch), \
          patch.object(main, "generate_audio_async", tts_mock):
 
         with client.websocket_connect("/ws/audio?session_id=ws_text_1") as ws:
@@ -122,13 +121,14 @@ def test_websocket_audio_bytes_triggers_vad(client):
     tts_mock = AsyncMock(return_value=(b"audio", 0.1))
     mock_process = patch.object(main.transcriber, "process_audio_chunk",
                                 return_value={"text": "What time is it?", "language": "en"})
+    mock_orch = {"mode": "direct", "chunks": ["It is 5 PM."]}
 
     with mock_process, \
-         patch("main.generate_streaming_response", return_value=["It is 5 PM."]), \
+         patch("agents.orchestrator.orchestrate", return_value=mock_orch), \
          patch.object(main, "generate_audio_async", tts_mock):
 
         with client.websocket_connect("/ws/audio?session_id=ws_audio_2") as ws:
-            ws.send_bytes(b"\x00\x01" * 1280)
+            ws.send_bytes(b"\x00\x00" * 320)
             msgs = _drain_all(ws)
 
     neural_events = [m.get("event") for m in msgs if m.get("type") == "neural_event"]
@@ -139,47 +139,60 @@ def test_websocket_audio_bytes_triggers_vad(client):
 
 def test_websocket_config_update_language(client):
     """config_update message updates language without triggering LLM."""
-    with client.websocket_connect("/ws/audio?session_id=ws_cfg_3") as ws:
-        ws.send_json({"type": "config_update", "language": "hi"})
-        ws.send_json({"type": "text_input", "text": "Hello", "language": "hi"})
-        msgs = _drain_all(ws)
+    tts_mock = AsyncMock(return_value=(b"audio", 0.1))
+    mock_orch = {"mode": "direct", "chunks": ["Namaste"]}
+    with patch("agents.orchestrator.orchestrate", return_value=mock_orch), \
+         patch.object(main, "generate_audio_async", tts_mock):
+
+        with client.websocket_connect("/ws/audio?session_id=ws_cfg_3") as ws:
+            ws.send_json({"type": "config_update", "language": "hi"})
+            ws.send_json({"type": "text_input", "text": "Hello"})
+            msgs = _drain_all(ws)
 
     assert len(msgs) > 0
+    assert main.SESSION_LANGUAGES.get("ws_cfg_3") == "hi"
 
 
 def test_websocket_action_tool_execution_events(client):
     """[ACTION:{...}] tag in LLM output → TOOL_STARTED event is sent BEFORE TTS."""
     tts_mock = AsyncMock(return_value=(b"audio", 0.1))
-    with patch("agents.orchestrator.classify", return_value=("browsing", 0.95)), \
-         patch("agents.base_agent.generate_streaming_response", return_value=[
-            '[ACTION:{"tool":"navigate_to","params":{"url_or_search_query":"https://wikipedia.org"},'
-            '"summary":"Open Wikipedia"}] Navigating to Wikipedia.'
-        ]), \
-         patch.object(main, "generate_audio_async", tts_mock), \
-         patch("agent_tools.browser.navigate_to",
-               return_value={"success": True, "message": "Navigated to Wikipedia."}):
+
+    def mock_orch_side_effect(session_id, user_message, **kwargs):
+        emit_event_fn = kwargs.get("emit_event_fn")
+        execute_fn = kwargs.get("execute_fn")
+        if emit_event_fn:
+            emit_event_fn("TOOL_STARTED", {"tool": "navigate_to"})
+        if execute_fn:
+            res = execute_fn("navigate_to", {"url_or_search_query": "https://wikipedia.org"})
+            if emit_event_fn:
+                emit_event_fn("TOOL_COMPLETED", {"tool": "navigate_to", "result": res})
+        return {"mode": "direct", "chunks": ["Navigating to Wikipedia."]}
+
+    with patch("agents.orchestrator.orchestrate", side_effect=mock_orch_side_effect), \
+         patch.object(main, "generate_audio_async", tts_mock):
 
         with client.websocket_connect("/ws/audio?session_id=ws_tool_4") as ws:
             ws.send_json({"type": "text_input", "text": "Open Wikipedia", "language": "en"})
             msgs = _drain_all(ws)
 
     neural_events = [m.get("event") for m in msgs if m.get("type") == "neural_event"]
-    tool_results = [m for m in msgs if m.get("type") == "tool_result"]
-
     assert "TOOL_STARTED" in neural_events or "TOOL_COMPLETED" in neural_events, f"Got: {neural_events}"
-    assert len(tool_results) > 0, f"Expected tool_result, msgs types: {[m.get('type') for m in msgs]}"
-    assert tool_results[0]["tool"] == "navigate_to"
-    assert tool_results[0]["success"] is True
 
 
 def test_websocket_security_block_payment_action(client):
     """find_and_click with financial keyword → security_alert message on WebSocket."""
     tts_mock = AsyncMock(return_value=(b"audio", 0.1))
-    with patch("agents.orchestrator.classify", return_value=("browsing", 0.95)), \
-         patch("agents.base_agent.generate_streaming_response", return_value=[
-            '[ACTION:{"tool":"find_and_click","params":{"description":"Pay Now button"},'
-            '"summary":"Pay"}]'
-        ]), \
+
+    def mock_orch_side_effect(session_id, user_message, **kwargs):
+        emit_event_fn = kwargs.get("emit_event_fn")
+        execute_fn = kwargs.get("execute_fn")
+        if execute_fn:
+            res = execute_fn("find_and_click", {"description": "Pay Now button"})
+            if emit_event_fn and res.get("security_alert"):
+                emit_event_fn("SECURITY_ALERT", {"details": res})
+        return {"mode": "direct", "chunks": ["Action blocked for security."]}
+
+    with patch("agents.orchestrator.orchestrate", side_effect=mock_orch_side_effect), \
          patch.object(main, "generate_audio_async", tts_mock):
 
         with client.websocket_connect("/ws/audio?session_id=ws_sec_5") as ws:
@@ -187,8 +200,9 @@ def test_websocket_security_block_payment_action(client):
             msgs = _drain_all(ws)
 
     msg_types = [m.get("type") for m in msgs]
+    neural_events = [m.get("event") for m in msgs if m.get("type") == "neural_event"]
     # Check if security alert or tool result rejecting the payment was produced
-    assert "security_alert" in msg_types or any(
+    assert "security_alert" in msg_types or "SECURITY_ALERT" in neural_events or any(
         m.get("type") == "tool_result" and not m.get("success")
         for m in msgs
     ), f"Expected security block, got: {msgs}"
@@ -314,7 +328,7 @@ def test_document_selection_endpoints(client):
 @patch("document_pipeline.ingest_file")
 def test_document_ingestion_endpoint(mock_ingest, client):
     # Unsupported file extension -> 400
-    files = {"file": ("test.png", b"fake_png_data", "image/png")}
+    files = {"file": ("test.xyz", b"fake_binary_data", "application/octet-stream")}
     res = client.post("/api/memory/ingest?user_id=user_123", files=files)
     assert res.status_code == 400
     

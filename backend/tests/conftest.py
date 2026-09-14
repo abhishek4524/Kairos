@@ -122,6 +122,7 @@ def mock_browser():
          patch("agent_tools.browser.go_back") as mock_back, \
          patch("agent_tools.browser.open_new_tab") as mock_new_tab, \
          patch("agent_tools.browser.switch_tab") as mock_switch, \
+         patch("agent_tools.browser.youtube_search") as mock_yt_search, \
          patch("agent_tools.browser.youtube_play_video") as mock_yt_play, \
          patch("agent_tools.browser.youtube_control") as mock_yt_ctrl:
 
@@ -133,6 +134,7 @@ def mock_browser():
         mock_back.return_value      = {"success": True, "message": "Navigated back"}
         mock_new_tab.return_value   = {"success": True, "message": "Opened new tab"}
         mock_switch.return_value    = {"success": True, "message": "Switched tab"}
+        mock_yt_search.return_value = {"success": True, "message": "Searched YouTube"}
         mock_yt_play.return_value   = {"success": True, "message": "Playing video #1"}
         mock_yt_ctrl.return_value   = {"success": True, "message": "YouTube control done"}
 
@@ -145,6 +147,7 @@ def mock_browser():
             "go_back": mock_back,
             "open_new_tab": mock_new_tab,
             "switch_tab": mock_switch,
+            "youtube_search": mock_yt_search,
             "youtube_play_video": mock_yt_play,
             "youtube_control": mock_yt_ctrl,
         }

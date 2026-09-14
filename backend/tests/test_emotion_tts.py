@@ -145,7 +145,7 @@ class TestBuildSSML:
         ssml_unknown = _build_ssml("Hello", self.VOICE, "unknown_emotion")
         ssml_neutral = _build_ssml("Hello", self.VOICE, "neutral")
         # Same prosody params since both resolve to neutral
-        assert 'rate="+10%"' in ssml_unknown  # neutral rate
+        assert 'rate="+0%"' in ssml_unknown  # neutral rate
         assert ssml_unknown == ssml_neutral
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -252,8 +252,8 @@ class TestFallback:
         assert label == "neutral"
         profile = get_emotion_profile(label)
         ssml = _build_ssml(text, "en-US-ChristopherNeural", label)
-        # Neutral rate should be +10%
-        assert 'rate="+10%"' in ssml
+        # Neutral rate should be +0%
+        assert 'rate="+0%"' in ssml
         assert 'pitch="+0Hz"' in ssml
 
     def test_garbled_tag_falls_back(self):

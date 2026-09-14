@@ -35,7 +35,7 @@ class BrowserManager:
     Supports distinct browser targets (e.g. Brave on port 9222, Chrome on port 9223).
     """
 
-    def __init__(self, browser_name: str = "brave", cdp_port: Optional[int] = None):
+    def __init__(self, browser_name: str = "chrome", cdp_port: Optional[int] = None):
         self.browser_name = browser_name.lower().strip()
         if cdp_port is None:
             self.cdp_port = DEFAULT_CHROME_CDP_PORT if self.browser_name == "chrome" else DEFAULT_CDP_PORT
@@ -77,10 +77,14 @@ class BrowserManager:
             print(f"[BROWSER] {self.browser_name.capitalize()} executable not found. Please set {var_name} in backend/.env.")
             return False
 
-        profile_name = "chrome_browser_profile" if self.browser_name == "chrome" else "browser_profile"
-        user_data_dir = os.path.join(platform_paths.KAIROS_DIR, profile_name)
+        if self.browser_name == "chrome":
+            sys_user_data = platform_paths.get_chrome_user_data_dir()
+            user_data_dir = sys_user_data if sys_user_data else os.path.join(platform_paths.KAIROS_DIR, "chrome_browser_profile")
+        else:
+            user_data_dir = os.path.join(platform_paths.KAIROS_DIR, "browser_profile")
         os.makedirs(user_data_dir, exist_ok=True)
 
+        chrome_profile = os.environ.get("KAIROS_CHROME_PROFILE", "Default")
         args = [
             browser_exe,
             f"--remote-debugging-port={self.cdp_port}",
@@ -89,25 +93,59 @@ class BrowserManager:
             "--no-first-run",
             "--no-default-browser-check",
         ]
+        if self.browser_name == "chrome":
+            args.append(f"--profile-directory={chrome_profile}")
         if url:
             args.append(url)
 
         try:
-            print(f"[BROWSER] Launching {self.browser_name.capitalize()} ({browser_exe}) with CDP port {self.cdp_port}...")
             popen_kwargs = {}
             if platform_paths.NO_WINDOW_FLAGS:
                 popen_kwargs["creationflags"] = platform_paths.NO_WINDOW_FLAGS
+
+            # Step 1: Kill any existing Chrome/Brave process that is NOT using our CDP port
+            # so we can relaunch it with --remote-debugging-port
+            if not self.is_cdp_available():
+                try:
+                    import psutil
+                    exe_lower = browser_exe.lower()
+                    for proc in psutil.process_iter(["pid", "name", "exe", "cmdline"]):
+                        try:
+                            proc_exe = (proc.info.get("exe") or "").lower()
+                            proc_cmd = " ".join(proc.info.get("cmdline") or []).lower()
+                            is_target = proc_exe == exe_lower or (
+                                self.browser_name in proc.info.get("name", "").lower()
+                            )
+                            already_has_cdp = f"--remote-debugging-port={self.cdp_port}" in proc_cmd
+                            if is_target and not already_has_cdp:
+                                proc.kill()
+                        except (psutil.NoSuchProcess, psutil.AccessDenied):
+                            pass
+                    time.sleep(1.0)  # Give OS a moment to free the process
+                except ImportError:
+                    pass  # psutil not available — proceed without killing
+
+            print(f"[BROWSER] Launching {self.browser_name.capitalize()} ({browser_exe}) with CDP port {self.cdp_port} (user_data_dir: {user_data_dir})...")
             subprocess.Popen(args, **popen_kwargs)
-            # Wait up to 6 seconds for CDP port to become active
-            for _ in range(12):
+
+            # Step 2: Wait up to 8 seconds for CDP port to become active
+            for _ in range(16):
                 time.sleep(0.5)
                 if self.is_cdp_available():
                     print(f"[BROWSER] {self.browser_name.capitalize()} CDP is live on port {self.cdp_port}.")
                     return True
-            return False
+
+            # Step 3: CDP still not available — use webbrowser.open to open the URL
+            # directly in whatever browser the OS prefers (will open in running Chrome/Brave)
+            import webbrowser
+            target_url = url or "https://www.google.com"
+            print(f"[BROWSER] CDP unavailable after launch attempt — opening '{target_url}' via webbrowser.open()")
+            webbrowser.open(target_url)
+            return False  # Return False so callers know CDP is unavailable, but URL is open
         except Exception as e:
             print(f"[BROWSER] Failed to launch {self.browser_name.capitalize()}: {e}")
             return False
+
 
     def launch_brave_with_cdp(self, url: str = "") -> bool:
         """Backward-compatible alias for Brave launching."""
@@ -119,6 +157,9 @@ class BrowserManager:
 
     def _ensure_connected_worker(self) -> Tuple[bool, str]:
         """Runs inside worker thread: connects to CDP and resolves active page."""
+        import sys, asyncio
+        if sys.platform == "win32":
+            asyncio.set_event_loop_policy(asyncio.WindowsProactorEventLoopPolicy())
         try:
             if not self.is_cdp_available():
                 print(f"[BROWSER] CDP port {self.cdp_port} ({self.browser_name}) not reachable. Attempting to launch...")
@@ -183,11 +224,29 @@ class BrowserManager:
 
     def _get_page_worker(self) -> Page:
         ok, msg = self._ensure_connected_worker()
-        if not ok or not self._active_page or self._active_page.is_closed():
-            if self._context and self._context.pages:
-                self._active_page = self._context.pages[-1]
+        if not ok:
+            raise RuntimeError(f"No active page available for {self.browser_name}: {msg}")
+
+        if not self._active_page or self._active_page.is_closed():
+            if self._context:
+                open_pages = [p for p in self._context.pages if not p.is_closed()]
+                if open_pages:
+                    self._active_page = open_pages[-1]
+                else:
+                    try:
+                        self._active_page = self._context.new_page()
+                    except Exception:
+                        self._cleanup_worker()
+                        ok, msg = self._ensure_connected_worker()
+                        if self._context:
+                            self._active_page = self._context.new_page()
+
+        if not self._active_page or self._active_page.is_closed():
+            if self._context:
+                self._active_page = self._context.new_page()
             else:
-                raise RuntimeError(f"No active page available for {self.browser_name}: {msg}")
+                raise RuntimeError(f"Could not resolve open target page for {self.browser_name}")
+
         return self._active_page
 
     def run_sync(self, func, *args, **kwargs) -> Any:
@@ -201,7 +260,7 @@ _managers: Dict[str, BrowserManager] = {}
 _managers_lock = threading.Lock()
 
 
-def get_browser_manager(browser_name: str = "brave") -> BrowserManager:
+def get_browser_manager(browser_name: str = "chrome") -> BrowserManager:
     """Returns singleton BrowserManager instance for the requested browser type."""
     name = browser_name.lower().strip()
     with _managers_lock:
@@ -211,8 +270,8 @@ def get_browser_manager(browser_name: str = "brave") -> BrowserManager:
         return _managers[name]
 
 
-# Default Brave instance for existing generic primitives
-_manager = get_browser_manager("brave")
+# Default Google Chrome instance for generic primitives
+_manager = get_browser_manager("chrome")
 
 
 # ── Generic Natural-Language DOM Element Resolver ──────────────────────────────
@@ -419,7 +478,6 @@ def _extract_element_confirmation(locator: Locator) -> Dict[str, Any]:
 # ── Generic Browser Primitives (Worker Implementation with Verification) ────────
 
 def _worker_navigate_to(url_or_query: str) -> Dict[str, Any]:
-    page = _manager._get_page_worker()
     target = url_or_query.strip()
     
     is_url = bool(re.match(r"^(https?:\/\/|www\.)", target, re.I) or ("." in target and " " not in target))
@@ -431,13 +489,46 @@ def _worker_navigate_to(url_or_query: str) -> Dict[str, Any]:
         url = "https://www.google.com/search?q=" + urllib.parse.quote_plus(target)
 
     try:
+        page = _manager._get_page_worker()
+    except Exception as cdp_err:
+        import webbrowser as _wb
+        print(f"[BROWSER] CDP connection failed ({cdp_err}) — opening '{url}' via webbrowser.open()")
+        _wb.open(url)
+        return {
+            "success": True,
+            "message": f"Navigated to {url}.",
+            "url": url,
+            "title": "",
+            "confirmation": {
+                "action": "navigate_fallback",
+                "target": target,
+                "final_url": url,
+            }
+        }
+
+    try:
         page.goto(url, wait_until="domcontentloaded", timeout=20000)
     except Exception as e:
-        return {
-            "success": False,
-            "error_type": "NAVIGATION_FAILED",
-            "message": f"Failed to navigate to '{target}': {e}"
-        }
+        err_msg = str(e)
+        if ("ERR_ABORTED" in err_msg or "closed" in err_msg.lower() or "target" in err_msg.lower()) and _manager._context:
+            try:
+                print(f"[BROWSER] Navigation aborted/closed. Creating fresh tab and retrying with commit wait...")
+                if page.is_closed():
+                    page = _manager._context.new_page()
+                    _manager._active_page = page
+                page.goto(url, wait_until="commit", timeout=15000)
+            except Exception as retry_err:
+                return {
+                    "success": False,
+                    "error_type": "NAVIGATION_FAILED",
+                    "message": f"Failed to navigate to '{target}': {retry_err}"
+                }
+        else:
+            return {
+                "success": False,
+                "error_type": "NAVIGATION_FAILED",
+                "message": f"Failed to navigate to '{target}': {e}"
+            }
 
     page.wait_for_timeout(800)
 
@@ -469,6 +560,7 @@ def _worker_navigate_to(url_or_query: str) -> Dict[str, Any]:
             "page_title": page.title(),
         }
     }
+
 
 
 def _worker_find_and_click(description: str) -> Dict[str, Any]:
@@ -763,8 +855,27 @@ def _worker_youtube_search(query: str) -> Dict[str, Any]:
     if not clean_query:
         return {"success": False, "error_type": "EMPTY_QUERY", "message": "No search query was provided."}
 
-    page = _manager._get_page_worker()
-    
+    search_url = f"https://www.youtube.com/results?search_query={urllib.parse.quote_plus(clean_query)}"
+
+    try:
+        page = _manager._get_page_worker()
+    except Exception as cdp_err:
+        import webbrowser as _wb
+        print(f"[BROWSER] CDP connection failed ({cdp_err}) — opening YouTube search via webbrowser.open()")
+        _wb.open(search_url)
+        return {
+            "success": True,
+            "message": f"Searched YouTube for '{clean_query}'. Opened in browser.",
+            "query": clean_query,
+            "url": search_url,
+            "results_count": 0,
+            "confirmation": {
+                "action": "youtube_search_fallback",
+                "query": clean_query,
+                "url": search_url
+            }
+        }
+
     # Check if we are already on YouTube
     is_on_youtube = "youtube.com" in page.url.lower()
 
@@ -778,14 +889,10 @@ def _worker_youtube_search(query: str) -> Dict[str, Any]:
                 search_box.press("Enter")
                 page.wait_for_timeout(1000)
             except Exception:
-                # Fallback to direct URL navigation
-                search_url = f"https://www.youtube.com/results?search_query={urllib.parse.quote_plus(clean_query)}"
                 page.goto(search_url, wait_until="domcontentloaded", timeout=20000)
         else:
-            search_url = f"https://www.youtube.com/results?search_query={urllib.parse.quote_plus(clean_query)}"
             page.goto(search_url, wait_until="domcontentloaded", timeout=20000)
     else:
-        search_url = f"https://www.youtube.com/results?search_query={urllib.parse.quote_plus(clean_query)}"
         page.goto(search_url, wait_until="domcontentloaded", timeout=20000)
 
     # Explicit Verification: wait for search results to render
@@ -815,6 +922,7 @@ def _worker_youtube_search(query: str) -> Dict[str, Any]:
             "url": page.url
         }
     }
+
 
 
 def _worker_youtube_play_video(index: int = 1) -> Dict[str, Any]:
@@ -1135,7 +1243,84 @@ def youtube_play_video(index: int = 1) -> Dict[str, Any]:
 def youtube_control(action: str) -> Dict[str, Any]:
     return _manager.run_sync(_worker_youtube_control, action)
 
+def youtube_like_video() -> Dict[str, Any]:
+    return _manager.run_sync(_worker_youtube_like)
+
+def youtube_subscribe() -> Dict[str, Any]:
+    return _manager.run_sync(_worker_youtube_subscribe)
+
+def open_github(path: str = "") -> Dict[str, Any]:
+    return _manager.run_sync(_worker_open_github, path)
+
+def open_instagram(path: str = "") -> Dict[str, Any]:
+    return _manager.run_sync(_worker_open_instagram, path)
+
+def instagram_action(action: str, target: str = "") -> Dict[str, Any]:
+    return _manager.run_sync(_worker_instagram_action, action, target)
+
 def run_work_mode(sites: Optional[List[Dict[str, str]]] = None, workspace: Optional[str] = None) -> Dict[str, Any]:
     """Executes Work Mode in Google Chrome and launches VS Code."""
     chrome_mgr = get_browser_manager("chrome")
     return chrome_mgr.run_sync(_worker_work_mode, sites, workspace)
+
+
+def _worker_youtube_like() -> Dict[str, Any]:
+    page = _manager._get_page_worker()
+    like_btn = page.locator("button[title*='I like this'], button[aria-label*='like this video'], like-button-view-model button").first
+    if like_btn and like_btn.count() > 0:
+        try:
+            like_btn.click(timeout=3000)
+            return {"success": True, "message": "Liked the YouTube video."}
+        except Exception:
+            pass
+    page.keyboard.press("i")
+    return {"success": True, "message": "Triggered like action on YouTube video."}
+
+
+def _worker_youtube_subscribe() -> Dict[str, Any]:
+    page = _manager._get_page_worker()
+    sub_btn = page.locator("ytd-subscribe-button-renderer button, button[aria-label*='Subscribe']").first
+    if sub_btn and sub_btn.count() > 0:
+        try:
+            sub_btn.click(timeout=3000)
+            return {"success": True, "message": "Subscribed to channel on YouTube."}
+        except Exception:
+            pass
+    return {"success": False, "message": "Subscribe button not found on current page."}
+
+
+def _worker_open_github(path: str = "") -> Dict[str, Any]:
+    clean_path = path.strip().lstrip("/")
+    url = f"https://github.com/{clean_path}" if clean_path else "https://github.com"
+    return _worker_navigate_to(url)
+
+
+def _worker_open_instagram(path: str = "") -> Dict[str, Any]:
+    clean_path = path.strip().lstrip("/")
+    url = f"https://www.instagram.com/{clean_path}" if clean_path else "https://www.instagram.com"
+    return _worker_navigate_to(url)
+
+
+def _worker_instagram_action(action: str, target: str = "") -> Dict[str, Any]:
+    page = _manager._get_page_worker()
+    act = action.lower().strip()
+    if act == "like_post":
+        like_btn = page.locator("svg[aria-label='Like']").first
+        if like_btn and like_btn.count() > 0:
+            like_btn.click(timeout=3000)
+            return {"success": True, "message": "Liked Instagram post."}
+        return {"success": False, "message": "Could not find Like button on Instagram post."}
+    elif act == "view_reels":
+        return _worker_navigate_to("https://www.instagram.com/reels/")
+    elif act == "view_messages":
+        return _worker_navigate_to("https://www.instagram.com/direct/inbox/")
+    elif act in ("scroll_down", "next_reel"):
+        page.keyboard.press("PageDown")
+        return {"success": True, "message": "Scrolled down Instagram feed/reels."}
+    elif act == "scroll_up":
+        page.keyboard.press("PageUp")
+        return {"success": True, "message": "Scrolled up Instagram feed."}
+    elif act == "search_user" and target:
+        return _worker_navigate_to(f"https://www.instagram.com/{target}/")
+    return {"success": False, "message": f"Unknown Instagram action: {action}"}
+
