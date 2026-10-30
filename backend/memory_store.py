@@ -32,7 +32,11 @@ def _get_data_dir() -> str:
         path = os.path.join(appdata, "Kairos")
     else:
         path = os.path.expanduser("~/.kairos")
-    os.makedirs(path, exist_ok=True)
+    try:
+        os.makedirs(path, exist_ok=True)
+    except Exception:
+        path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data")
+        os.makedirs(path, exist_ok=True)
     return path
 
 # ── ChromaDB ──────────────────────────────────────────────────────────────────
@@ -80,7 +84,17 @@ except Exception as _e:
 _SQLITE_PATH = os.path.join(_get_data_dir(), "memory.db")
 
 def _conn():
-    return sqlite3.connect(_SQLITE_PATH)
+    global _SQLITE_PATH
+    try:
+        c = sqlite3.connect(_SQLITE_PATH)
+        c.execute("SELECT 1")
+        return c
+    except sqlite3.OperationalError:
+        fallback_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data")
+        os.makedirs(fallback_dir, exist_ok=True)
+        _SQLITE_PATH = os.path.join(fallback_dir, "memory.db")
+        c = sqlite3.connect(_SQLITE_PATH)
+        return c
 
 def _init_tables():
     con = _conn()

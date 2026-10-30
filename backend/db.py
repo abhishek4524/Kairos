@@ -22,17 +22,32 @@ def _get_data_dir() -> str:
         path = os.path.join(appdata, "Kairos")
     else:
         path = os.path.expanduser("~/.kairos")
-    os.makedirs(path, exist_ok=True)
+    try:
+        os.makedirs(path, exist_ok=True)
+    except Exception:
+        # Fallback to local workspace data folder if APPDATA is sandboxed or inaccessible
+        path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data")
+        os.makedirs(path, exist_ok=True)
     return path
 
 # ── Local SQLite Storage ──────────────────────────────────────────────────────
 _SQLITE_PATH = os.path.join(_get_data_dir(), 'memory.db')
 
 def _sqlite_conn():
-    conn = sqlite3.connect(_SQLITE_PATH)
-    conn.execute("PRAGMA journal_mode = WAL")
-    conn.execute("PRAGMA synchronous = NORMAL")
-    return conn
+    global _SQLITE_PATH
+    try:
+        conn = sqlite3.connect(_SQLITE_PATH)
+        conn.execute("PRAGMA journal_mode = WAL")
+        conn.execute("PRAGMA synchronous = NORMAL")
+        return conn
+    except sqlite3.OperationalError:
+        fallback_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data")
+        os.makedirs(fallback_dir, exist_ok=True)
+        _SQLITE_PATH = os.path.join(fallback_dir, "memory.db")
+        conn = sqlite3.connect(_SQLITE_PATH)
+        conn.execute("PRAGMA journal_mode = WAL")
+        conn.execute("PRAGMA synchronous = NORMAL")
+        return conn
 
 def init_db():
     """Initializes local SQLite tables and indexes."""

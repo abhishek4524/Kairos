@@ -254,30 +254,51 @@ class GestureModeRequest(BaseModel):
     mode: str
 
 @app.post("/api/gesture/start")
-def start_camera_gesture(req: GestureStartRequest = GestureStartRequest()):
+async def start_camera_gesture(req: GestureStartRequest = GestureStartRequest()):
     gc = get_gesture_controller()
     return gc.start(show_preview=req.show_preview, camera_id=req.camera_id, mode=req.mode)
 
 @app.post("/api/gesture/stop")
-def stop_camera_gesture():
+async def stop_camera_gesture():
     gc = get_gesture_controller()
     return gc.stop()
 
 @app.post("/api/gesture/mode")
-def set_camera_gesture_mode_api(req: GestureModeRequest):
+async def set_camera_gesture_mode_api(req: GestureModeRequest):
     gc = get_gesture_controller()
     return gc.set_mode(req.mode)
 
 @app.get("/api/gesture/status")
-def get_camera_gesture_status_api():
+async def get_camera_gesture_status_api():
     gc = get_gesture_controller()
     return {"success": True, "status": gc.get_status()}
+
+@app.get("/api/gesture/expression")
+async def get_camera_facial_expression_api():
+    gc = get_gesture_controller()
+    return {"success": True, "expression": gc.get_facial_expression()}
+
+@app.post("/api/gesture/expression/toggle")
+async def toggle_facial_expression_api(payload: dict):
+    """Enable or disable facial expression detection. Body: { "enabled": true/false }"""
+    gc = get_gesture_controller()
+    enabled = bool(payload.get("enabled", True))
+    return gc.toggle_expression(enabled)
 
 from fastapi.responses import StreamingResponse
 import asyncio as _asyncio
 
 async def _mjpeg_generator():
     gc = get_gesture_controller()
+    if not gc._running:
+        gc.start(show_preview=False, camera_id=0)
+
+    # Allow up to 6 seconds for camera init and first frame detection
+    for _ in range(60):
+        if gc._running and gc.latest_frame:
+            break
+        await _asyncio.sleep(0.1)
+
     while gc._running:
         with gc._frame_lock:
             frame = gc.latest_frame

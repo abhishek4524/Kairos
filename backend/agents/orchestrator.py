@@ -241,6 +241,23 @@ def orchestrate(
         from agent_tools.executor import execute_tool
         execute_fn = execute_tool
 
+    # ── Real-Time Visual Sensory Perception (Facial Expression Detection) ───
+    try:
+        from agent_tools.gesture_control import get_gesture_controller
+        gc = get_gesture_controller()
+        expr = gc.get_facial_expression() if hasattr(gc, "get_facial_expression") else None
+        if expr and expr.get("face_detected") and (time.time() - expr.get("timestamp", 0) <= 12.0):
+            emo = expr.get("emotion", "neutral")
+            label = expr.get("label", emo)
+            conf = int(expr.get("confidence", 0.0) * 100)
+            desc = expr.get("description", "")
+            is_asking_face = bool(re.search(r"\b(face|chehra|expression|mood|smile|kaisa dikh|kaisa lag|how do i look|my expression|can you see me)\b", user_message, re.IGNORECASE))
+            if emo != "neutral" or is_asking_face:
+                visual_tag = f"[REAL-TIME VISUAL SENSORY PERCEPTION: Camera observes Abhishek's face. Detected expression: {emo.upper()} ({label}, {desc}, confidence {conf}%).]"
+                user_message = f"{user_message}\n{visual_tag}"
+    except Exception as _vis_err:
+        logger.debug("[ORCHESTRATOR] Visual perception check skipped: %s", _vis_err)
+
     # Code-level guard: Enforce real-time datetime execution for date/time/day queries
     is_datetime_query = bool(re.search(r"\b(date|time|day|clock|aaj|today)\b", user_message, re.IGNORECASE))
     if is_datetime_query:

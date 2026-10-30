@@ -41,6 +41,16 @@ class TestGestureControl(unittest.TestCase):
         self.assertIn("volume", status)
         self.assertIn("right_hand", status)
         self.assertIn("left_hand", status)
+        self.assertIn("expression", status)
+
+    def test_facial_expression_status_and_getter(self):
+        gc = gesture_control.get_gesture_controller()
+        expr = gc.get_facial_expression()
+        self.assertIsInstance(expr, dict)
+        self.assertIn("emotion", expr)
+        self.assertIn("confidence", expr)
+        status = gc.get_status()
+        self.assertIn("expression", status)
 
 
 if __name__ == "__main__":

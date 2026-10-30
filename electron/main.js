@@ -1,4 +1,4 @@
-﻿/**
+/**
  * Kairos Desktop — Electron Main Process
  *
  * Responsibilities:
@@ -992,7 +992,8 @@ ipcMain.handle('os:execute-tool', async (_, { toolName, params = {} }) => {
         if (process.platform === 'win32') {
           const appMap = { spotify:'start spotify:', chrome:'start chrome', notepad:'notepad', calc:'calc',
             calculator:'calc', code:'code', vscode:'code', discord:'start discord:',
-            terminal:'start wt || start cmd', cmd:'start cmd', vlc:'start vlc', explorer:'explorer' };
+            terminal:'start wt || start cmd', cmd:'start cmd', vlc:'start vlc', explorer:'explorer',
+            camera:'start microsoft.windows.camera:', webcam:'start microsoft.windows.camera:' };
           cmd = appMap[appName] || 'start "" "' + params.app_name + '"';
         } else if (process.platform === 'darwin') {
           cmd = 'open -a "' + params.app_name + '"';

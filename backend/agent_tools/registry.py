@@ -709,17 +709,29 @@ TOOLS_SCHEMA = [
         "type": "function",
         "function": {
             "name": "set_camera_gesture_mode",
-            "description": "Switch the camera hand gesture control mode between system control ('system': Brightness/Volume) and 3D model control ('avatar': 3D rotation and zoom).",
+            "description": "Switch camera hand gesture mode between system control ('system': Brightness/Volume), 3D model control ('avatar': 3D rotation/zoom), and hand mouse ('mouse': control cursor, click, drag, scroll with hand).",
             "parameters": {
                 "type": "object",
                 "properties": {
                     "mode": {
                         "type": "string",
-                        "description": "Mode to switch to: 'system' for Brightness/Volume, or 'avatar' for 3D model rotation/zoom",
-                        "enum": ["system", "avatar"]
+                        "description": "Mode to switch to: 'system' for Brightness/Volume, 'avatar' for 3D model rotation/zoom, or 'mouse' for Hand Mouse control",
+                        "enum": ["system", "avatar", "mouse"]
                     }
                 },
                 "required": ["mode"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "get_facial_expression",
+            "description": "Get real-time facial expression and emotion of Abhishek detected by the camera (e.g. happy/smiling, sad/downcast, surprised, tired, neutral).",
+            "parameters": {
+                "type": "object",
+                "properties": {},
+                "required": []
             }
         }
     }
@@ -786,6 +798,7 @@ TOOL_AGENT_MAP: dict = {
     "stop_camera_gesture_control":    "system_agent",
     "get_camera_gesture_status":     "system_agent",
     "set_camera_gesture_mode":       "system_agent",
+    "get_facial_expression":         "system_agent",
     # info_agent (Live Knowledge & Utilities)
     "get_current_datetime":    "info_agent",
     "get_weather":             "info_agent",
@@ -837,6 +850,14 @@ def format_system_tools_prompt(tool_names: list = None) -> str:
         ("switch_tab",      "`switch_tab` → `{\"index_or_description\":\"github\"}`"),
     ]
     browser_entries = [desc for name, desc in browser_tools if _include(name)]
+    # Additional browser shortcuts
+    more_browser_tools = [
+        ("read_page",          "`read_page` → `{}` — extract and read page content"),
+        ("open_github",        "`open_github` → `{}` — open GitHub in browser"),
+        ("open_instagram",     "`open_instagram` → `{}` — open Instagram in browser"),
+        ("instagram_action",   "`instagram_action` → `{\"action\":\"check_dms\"}` — Instagram automation"),
+    ]
+    browser_entries += [desc for name, desc in more_browser_tools if _include(name)]
     if browser_entries:
         lines += ["", "GENERIC BROWSER PRIMITIVES (WORKS ON ANY WEBSITE VIA CDP):"] + browser_entries
 
@@ -846,6 +867,8 @@ def format_system_tools_prompt(tool_names: list = None) -> str:
         ("youtube_search",        "`youtube_search` → `{\"query\":\"lofi music\"}` — search on YouTube"),
         ("youtube_play_video",    "`youtube_play_video` → `{\"index\":2}` — play Nth result"),
         ("youtube_control",       "`youtube_control` → `{\"action\":\"play_pause\"}` — playback control"),
+        ("youtube_like_video",    "`youtube_like_video` → `{}` — like the active YouTube video"),
+        ("youtube_subscribe",     "`youtube_subscribe` → `{}` — subscribe to the active channel"),
     ]
     yt_entries = [desc for name, desc in yt_tools if _include(name)]
     if yt_entries:
@@ -853,7 +876,7 @@ def format_system_tools_prompt(tool_names: list = None) -> str:
 
     # Desktop / OS tools
     os_tools = [
-        ("open_app",     "`open_app` → `{\"app_name\":\"chrome\"}`"),
+        ("open_app",     "`open_app` → `{\"app_name\":\"calc\"}` — launch calculator, camera, chrome, notepad, etc."),
         ("open_brave",   "`open_brave` → `{}` — launch/focus Brave browser"),
         ("open_vscode",  "`open_vscode` → `{}` — launch Visual Studio Code"),
         ("close_app",    "`close_app` → `{\"app_name\":\"calc\"}`"),
@@ -864,6 +887,18 @@ def format_system_tools_prompt(tool_names: list = None) -> str:
     os_entries = [desc for name, desc in os_tools if _include(name)]
     if os_entries:
         lines += ["", "DESKTOP APPS & OS TOOLS:"] + os_entries
+
+    # Camera Gesture Control tools
+    gesture_tools = [
+        ("start_camera_gesture_control", "`start_camera_gesture_control` → `{}` — start webcam hand gesture tracking"),
+        ("stop_camera_gesture_control",  "`stop_camera_gesture_control` → `{}` — stop webcam hand gesture tracking"),
+        ("get_camera_gesture_status",    "`get_camera_gesture_status` → `{}` — check camera gesture tracking status"),
+        ("set_camera_gesture_mode",      "`set_camera_gesture_mode` → `{\"mode\":\"mouse\"}` — switch mode: 'system', 'avatar', or 'mouse'"),
+        ("get_facial_expression",        "`get_facial_expression` → `{}` — check Abhishek's live facial expression & mood"),
+    ]
+    gesture_entries = [desc for name, desc in gesture_tools if _include(name)]
+    if gesture_entries:
+        lines += ["", "CAMERA GESTURE CONTROL TOOLS:"] + gesture_entries
 
     # File & Folder Management tools
     file_tools = [
@@ -882,6 +917,7 @@ def format_system_tools_prompt(tool_names: list = None) -> str:
         ("get_weather",          "`get_weather` → `{\"city\":\"Mumbai\"}` — live current weather (temp, humidity, wind, conditions)"),
         ("get_news",             "`get_news` → `{\"topic_or_location\":\"Muzaffarnagar\"}` — live city/topic news"),
         ("answer_general_question", "`answer_general_question` → `{\"query\":\"who won the cricket match yesterday\"}` — live web search"),
+        ("query_spreadsheet",    "`query_spreadsheet` → `{\"filepath\":\"data.xlsx\",\"question\":\"total revenue\"}` — query spreadsheet with pandas"),
     ]
     info_entries = [desc for name, desc in info_tools if _include(name)]
     if info_entries:

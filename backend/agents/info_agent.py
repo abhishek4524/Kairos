@@ -10,8 +10,10 @@ class InfoAgent(BaseSubAgent):
     description = "Specialized sub-agent for live world intelligence, date/time queries, hyperlocal & global news, and web search."
     tool_names = [
         "get_current_datetime",
+        "get_weather",
         "get_news",
         "answer_general_question",
+        "query_spreadsheet",
     ]
     system_prompt_addon = """
 ## LIVE INFORMATION & UTILITY SPECIALIST:

@@ -230,6 +230,11 @@ def execute_tool(tool_name: str, params: dict, confirmed_action_id: Optional[str
             mode = str(safe_params.get("mode", "system"))
             return gc.set_mode(mode)
 
+        elif tool_name == "get_facial_expression":
+            from agent_tools.gesture_control import get_gesture_controller
+            gc = get_gesture_controller()
+            return {"success": True, "expression": gc.get_facial_expression()}
+
         # ── Desktop OS & Application Management ──────────────────────────────
         elif tool_name == "open_brave":
             return _open_brave()
@@ -254,11 +259,19 @@ def execute_tool(tool_name: str, params: dict, confirmed_action_id: Optional[str
         elif tool_name == "type_in_active_window":
             return _type_in_active_window(safe_params.get("text", ""))
 
-        elif tool_name == "open_notepad_and_write_code":
+        elif tool_name in ("open_notepad_and_write_code", "write_to_notepad", "notepad_write"):
             target_path = safe_params.get("resolved_path")
+            # Accept either "code" or "text" or "content" param
+            content = (
+                safe_params.get("text")
+                or safe_params.get("code")
+                or safe_params.get("content")
+                or ""
+            )
+            filename = safe_params.get("filename", "note.txt")
             return _open_notepad_write(
-                filename=safe_params.get("filename", "code.py"),
-                code=safe_params.get("code", ""),
+                filename=filename,
+                code=content,
                 resolved_path=target_path
             )
 
@@ -522,7 +535,12 @@ def _type_in_active_window(text: str) -> dict:
     safe_text = text.replace("\\", "\\\\").replace('"', '\\"').replace('\n', '\\n')
     code = f"""
 time.sleep(0.3)
-pyautogui.write("{safe_text}", interval=0.04)
+try:
+    import pyperclip
+    pyperclip.copy("{safe_text}")
+    pyautogui.hotkey('ctrl', 'v')
+except Exception:
+    pyautogui.write("{safe_text}", interval=0.04)
 """
     ok = _run_auto(code.strip())
     return {"success": ok, "message": "Typed text in active window."}
@@ -597,6 +615,19 @@ def _open_app(app_name: str) -> dict:
             return {"success": True, "message": "Opened Calculator."}
         except Exception as e:
             return {"success": False, "message": f"Could not open Calculator: {e}"}
+
+    if key in ("camera", "webcam", "windows camera", "camera app"):
+        try:
+            if platform_paths.IS_WINDOWS:
+                os.startfile("microsoft.windows.camera:")
+                return {"success": True, "message": "Opened Windows Camera."}
+            else:
+                ok = platform_paths.launch_default_app("camera")
+                if ok:
+                    return {"success": True, "message": "Opened Camera."}
+                return {"success": False, "message": "Could not open Camera on this platform."}
+        except Exception as e:
+            return {"success": False, "message": f"Could not open Camera: {e}"}
 
     if key in ("terminal", "command prompt", "cmd", "powershell"):
         try:
@@ -761,7 +792,7 @@ def _work_mode() -> dict:
 
 
 def _open_notepad_write(filename="code.py", code="", resolved_path=None):
-    """Write code into workspace file and open in platform text editor."""
+    """Write content to a file and open it in the system text editor (Notepad on Windows)."""
     if not code or not code.strip():
         return {
             "success": False,
@@ -780,7 +811,7 @@ def _open_notepad_write(filename="code.py", code="", resolved_path=None):
             return {
                 "success": False,
                 "error_type": "DISK_WRITE_FAILED",
-                "message": f"Failed to write code to disk at '{filepath}'."
+                "message": f"Failed to write content to disk at '{filepath}'."
             }
 
         cmd = platform_paths.get_text_editor_command(filepath)
@@ -800,7 +831,8 @@ def _open_notepad_write(filename="code.py", code="", resolved_path=None):
             "message": f"Created {clean_name} with your Python code and opened it in Notepad.",
             "filepath": filepath,
             "filename": clean_name,
-            "editor": cmd[0]
+            "editor": cmd[0],
+            "content_preview": code[:100] + ("..." if len(code) > 100 else "")
         }
     except Exception as e:
         return {"success": False, "error_type": "EDITOR_ERROR", "message": f"Editor error: {e}"}
